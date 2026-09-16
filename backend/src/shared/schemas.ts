@@ -1,0 +1,84 @@
+import { z } from "zod";
+
+export const idParam = z.object({ id: z.coerce.number().int().positive() });
+
+export const loginSchema = z.object({
+  identifier: z.string().min(3),
+  password: z.string().min(6)
+});
+
+export const associateSchema = z.object({
+  idType: z.enum(["CC", "CE", "TI", "PA", "NIT"]),
+  idNumber: z.string().min(4).max(40),
+  firstName: z.string().min(1).max(100),
+  lastName: z.string().min(1).max(100),
+  birthDate: z.string().date().optional().nullable(),
+  phone: z.string().max(40).optional().nullable(),
+  email: z.string().email().optional().nullable(),
+  address: z.string().max(255).optional().nullable(),
+  municipality: z.string().max(100).optional().nullable(),
+  department: z.string().max(100).optional().nullable(),
+  country: z.string().max(100).optional(),
+  incomeInfo: z.string().max(255).optional().nullable(),
+  notes: z.string().optional().nullable(),
+  dataConsent: z.boolean().optional()
+});
+
+export const societySchema = z.object({
+  taxIdType: z.enum(["NIT"]),
+  taxIdNumber: z.string().min(4).max(40),
+  legalName: z.string().min(1).max(160),
+  tradeName: z.string().max(160).optional().nullable(),
+  legalRepresentativeAssociateId: z.coerce.number().int().positive().optional().nullable(),
+  phone: z.string().max(40).optional().nullable(),
+  email: z.string().email().optional().nullable(),
+  address: z.string().max(255).optional().nullable(),
+  economicActivity: z.string().max(160).optional().nullable(),
+  notes: z.string().optional().nullable()
+});
+
+export const creditApplicationSchema = z.object({
+  titularAssociateId: z.coerce.number().int().positive().optional().nullable(),
+  titularSocietyId: z.coerce.number().int().positive().optional().nullable(),
+  coDebtorAssociateIds: z.array(z.coerce.number().int().positive()).max(2).optional(),
+  requestedAmount: z.coerce.number().positive(),
+  termValue: z.coerce.number().int().positive(),
+  interestRate: z.coerce.number().positive(),
+  rateType: z.enum(["NOMINAL_MENSUAL", "EFECTIVA_ANUAL"]).default("NOMINAL_MENSUAL"),
+  expectedDisbursementDate: z.string().date().optional().nullable(),
+  dueDayRule: z.string().optional().nullable(),
+  purpose: z.string().max(255).optional().nullable(),
+  notes: z.string().optional().nullable()
+});
+
+export const decisionSchema = z.object({
+  approvedAmount: z.coerce.number().positive().optional(),
+  approvedRate: z.coerce.number().positive().optional(),
+  approvedTerm: z.coerce.number().int().positive().optional(),
+  observations: z.string().optional().nullable(),
+  rejectionReason: z.string().optional().nullable()
+});
+
+export const disbursementSchema = z.object({
+  disbursementDate: z.string().date(),
+  firstInstallmentDate: z.string().date()
+});
+
+export const paymentSchema = z.object({
+  creditId: z.coerce.number().int().positive(),
+  receivedDate: z.string().date(),
+  effectiveDate: z.string().date().optional().nullable(),
+  amount: z.coerce.number().positive(),
+  paymentMethod: z.string().min(1).max(60),
+  reference: z.string().max(120).optional().nullable(),
+  notes: z.string().max(255).optional().nullable()
+});
+
+export const reversalSchema = z.object({
+  reason: z.string().min(3).max(255)
+});
+
+export const paginationQuery = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20)
+});
