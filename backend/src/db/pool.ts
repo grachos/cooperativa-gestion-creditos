@@ -87,15 +87,18 @@ async function runQuery<T>(
   return shapeResult<T>(sql, pgResult);
 }
 
+const ssl = env.DATABASE_SSL ? { rejectUnauthorized: false } : undefined;
+
 const pgPool = new pg.Pool(
   env.DATABASE_URL
-    ? { connectionString: env.DATABASE_URL, ssl: env.DATABASE_SSL ? { rejectUnauthorized: false } : undefined }
+    ? { connectionString: env.DATABASE_URL, ssl }
     : {
         host: env.DB_HOST,
         port: env.DB_PORT,
         user: env.DB_USER,
         password: env.DB_PASSWORD,
-        database: env.DB_NAME
+        database: env.DB_NAME,
+        ssl
       }
 );
 

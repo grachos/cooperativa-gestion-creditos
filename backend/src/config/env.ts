@@ -7,10 +7,13 @@ const envSchema = z
     PORT: z.coerce.number().default(4000),
     // Producción/Supabase: una sola cadena de conexión Postgres.
     DATABASE_URL: z.string().min(1).optional(),
+    // Por defecto SIN SSL (Postgres local / docker-compose no trae
+    // certificados configurados). Se activa explícitamente con
+    // DATABASE_SSL=true, como en producción/Supabase.
     DATABASE_SSL: z
       .string()
       .optional()
-      .transform((v) => v !== "false"),
+      .transform((v) => v === "true"),
     // Desarrollo local sin Supabase: Postgres por variables sueltas.
     DB_HOST: z.string().default("localhost"),
     DB_PORT: z.coerce.number().default(5432),
