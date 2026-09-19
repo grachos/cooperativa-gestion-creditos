@@ -1,4 +1,8 @@
-const BASE_URL = "/api/v1";
+// En desarrollo, Vite hace proxy de /api hacia el backend local (vite.config.ts).
+// En despliegues donde el frontend y el backend no comparten origen (p. ej.
+// frontend en Vercel, backend en otro proveedor), define VITE_API_BASE_URL
+// apuntando a la URL completa del backend (ej. https://api.midominio.com/api/v1).
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api/v1";
 
 function getAccessToken(): string | null {
   return localStorage.getItem("accessToken");

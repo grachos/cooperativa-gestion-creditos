@@ -127,6 +127,32 @@ npm install
 npm run dev              # http://localhost:5173 (proxy a /api hacia el backend)
 ```
 
+## 4bis. Despliegue del frontend en Vercel
+
+Vercel no aloja MySQL ni procesos Node de larga duración como Express, así
+que por ahora solo el **frontend** se despliega ahí (sirve como build/deploy
+de demostración de la interfaz; el login y las llamadas a `/api/...`
+fallarán hasta que el backend tenga un host propio con una base de datos
+accesible desde internet — ver sección 9).
+
+Pasos:
+
+1. En [vercel.com](https://vercel.com) → **Add New… → Project** → importa
+   este repositorio de GitHub.
+2. En la configuración del proyecto, **Root Directory** → `frontend`.
+   Vercel detecta Vite automáticamente (`npm run build`, salida `dist`).
+3. `frontend/vercel.json` ya incluye el rewrite necesario para que las
+   rutas de React Router (`/creditos/1`, etc.) no den 404 al recargar.
+4. Si más adelante el backend queda desplegado en otro dominio, configura
+   la variable de entorno `VITE_API_BASE_URL` en el proyecto de Vercel
+   (Settings → Environment Variables) apuntando a
+   `https://tu-backend.dominio.com/api/v1`, y vuelve a desplegar.
+
+Verificado localmente: `npm run build` genera `frontend/dist` sin errores
+de TypeScript, y sirviendo ese `dist` de forma estática se carga el login
+correctamente (sin la base de datos, cualquier intento de ingresar fallará
+con un error de red — comportamiento esperado hasta desplegar el backend).
+
 ## 5. Guion de demo sugerido
 
 Usuarios de demostración (contraseña `Demo1234*`):
