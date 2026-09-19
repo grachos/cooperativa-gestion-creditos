@@ -11,11 +11,18 @@ export interface ScheduleRow {
 }
 
 /**
- * Sistema francés de cuota fija. ASUNCIÓN DE DEMOSTRACIÓN (pendiente de
- * confirmación por la cooperativa): interestRate es una tasa mensual
- * nominal expresada en porcentaje y se usa directamente como tasa
- * periódica. La fórmula y la periodicidad definitivas deben confirmarse
- * (ver sección "preguntas pendientes").
+ * Interés fijo simple sobre el capital original (NO amortización francesa).
+ *
+ * Verificado contra los datos reales de la cooperativa: un crédito de
+ * $4.100.000 a 18 cuotas de $391.800 reparte exactamente $227.777,78 de
+ * capital y $164.022,22 de interés en CADA cuota (capital e interés
+ * constantes, sin importar el saldo pendiente). El interés total
+ * corresponde a `principal * monthlyRatePercent/100 * termMonths`
+ * (≈4% mensual sobre el capital original en los créditos revisados).
+ *
+ * Esto reemplaza la suposición inicial de "sistema francés" (cuota fija
+ * con interés decreciente), que no coincide con cómo la cooperativa
+ * calcula sus créditos hoy.
  */
 export function buildAmortizationSchedule(params: {
   principal: number;
@@ -24,25 +31,26 @@ export function buildAmortizationSchedule(params: {
   firstInstallmentDate: Date;
 }): ScheduleRow[] {
   const { principal, monthlyRatePercent, termMonths, firstInstallmentDate } = params;
-  const i = monthlyRatePercent / 100;
   const n = termMonths;
 
-  const installmentValue =
-    i === 0
-      ? round2(principal / n)
-      : round2((principal * i) / (1 - Math.pow(1 + i, -n)));
+  const principalPerInstallment = round2(principal / n);
+  const totalInterest = round2(principal * (monthlyRatePercent / 100) * n);
+  const interestPerInstallment = round2(totalInterest / n);
 
-  let balance = principal;
+  let principalRemaining = principal;
+  let interestRemaining = totalInterest;
   const rows: ScheduleRow[] = [];
 
   for (let k = 1; k <= n; k++) {
-    const interestDue = round2(balance * i);
-    let principalDue = round2(installmentValue - interestDue);
+    let principalDue = principalPerInstallment;
+    let interestDue = interestPerInstallment;
     if (k === n) {
-      // Ajuste de redondeo en la última cuota para saldar exactamente el capital.
-      principalDue = round2(balance);
+      // Ajuste de redondeo en la última cuota para saldar exactamente capital e interés.
+      principalDue = round2(principalRemaining);
+      interestDue = round2(interestRemaining);
     }
-    balance = round2(balance - principalDue);
+    principalRemaining = round2(principalRemaining - principalDue);
+    interestRemaining = round2(interestRemaining - interestDue);
 
     const dueDate = new Date(firstInstallmentDate);
     dueDate.setMonth(dueDate.getMonth() + (k - 1));
@@ -54,7 +62,7 @@ export function buildAmortizationSchedule(params: {
       interestDue,
       otherDue: 0,
       totalDue: round2(principalDue + interestDue),
-      balance: Math.max(balance, 0)
+      balance: round2(principalDue + interestDue)
     });
   }
 

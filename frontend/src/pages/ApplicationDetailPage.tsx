@@ -27,11 +27,17 @@ export default function ApplicationDetailPage() {
   const [rejectionReason, setRejectionReason] = useState("");
   const [disbursementDate, setDisbursementDate] = useState(new Date().toISOString().slice(0, 10));
   const [firstInstallmentDate, setFirstInstallmentDate] = useState("");
+  const [assignedCollectorId, setAssignedCollectorId] = useState("");
+  const [assignedSellerId, setAssignedSellerId] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["application", id],
     queryFn: () => api.get<ApplicationDetail>(`/applications/${id}`)
+  });
+  const { data: users } = useQuery({
+    queryKey: ["users"],
+    queryFn: () => api.get<{ data: Array<{ id: number; full_name: string }> }>("/users")
   });
 
   function invalidate() {
@@ -71,7 +77,9 @@ export default function ApplicationDetailPage() {
     try {
       const result = await api.post<{ id: number }>(`/credits/applications/${id}/disburse`, {
         disbursementDate,
-        firstInstallmentDate
+        firstInstallmentDate,
+        assignedCollectorId: assignedCollectorId ? Number(assignedCollectorId) : undefined,
+        assignedSellerId: assignedSellerId ? Number(assignedSellerId) : undefined
       });
       navigate(`/creditos/${result.id}`);
     } catch (err) {
@@ -162,6 +170,36 @@ export default function ApplicationDetailPage() {
                 value={firstInstallmentDate}
                 onChange={(e) => setFirstInstallmentDate(e.target.value)}
               />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-slate-500">Gestor de cartera asignado</label>
+              <select
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                value={assignedCollectorId}
+                onChange={(e) => setAssignedCollectorId(e.target.value)}
+              >
+                <option value="">Sin asignar</option>
+                {users?.data.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.full_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-slate-500">Vendedor</label>
+              <select
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                value={assignedSellerId}
+                onChange={(e) => setAssignedSellerId(e.target.value)}
+              >
+                <option value="">Sin asignar</option>
+                {users?.data.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.full_name}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
           <button

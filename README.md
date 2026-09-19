@@ -31,13 +31,35 @@ con Vite.
   historial de estados.
 - Aprobación/rechazo como operación separada del desembolso, con
   transacción atómica: crea el crédito, congela condiciones, genera el
-  cronograma (sistema francés de cuota fija) y encola el evento contable.
+  cronograma y encola el evento contable.
+- **Cronograma con interés fijo simple** sobre el capital original, repartido
+  en partes iguales entre todas las cuotas (capital e interés constantes en
+  cada cuota). Esto reemplaza la suposición inicial de amortización francesa
+  y quedó **verificado contra el histórico real de la cooperativa**: un
+  crédito de $4.100.000 a 18 cuotas reparte exactamente $227.777,78 de
+  capital y $164.022,22 de interés en cada cuota, consistente con su propia
+  nota de "interés del 4% mensual". Ver `schedule.service.ts`.
 - Registro de pagos y abonos con imputación configurable (mora → interés →
   capital), reversión auditada (nunca borrado físico).
 - Motor de mora parametrizable (días de gracia, tasa/base, tope) — valores de
   **demostración**, no definitivos.
 - Alertas (próximo vencimiento, vencimiento del día, mora inicial/prolongada)
   con centro de alertas y actualización en tiempo real vía SSE.
+- **Compromisos de pago** (`collection_actions.promise_date`): fecha en que
+  el cliente promete pagar, con seguimiento de cumplido/incumplido — hallazgo
+  directo del Excel real (columna "FECHAS DE COMPROMISOS").
+- **Gestor de cartera y vendedor asignados por crédito** (`assigned_collector_id`,
+  `assigned_seller_id`), también tomado del Excel real ("GESTOR A CARGO",
+  "VENDEDOR").
+- **Ajustes manuales auditables** (`credit_adjustments`): interés por cambio
+  de fecha, descuentos autorizados, gastos de notificación — en el Excel
+  original eran columnas sueltas sin trazabilidad de quién autorizaba; aquí
+  quedan como movimientos con aprobador obligatorio.
+- **Refinanciación** (`POST /credits/:id/refinance`): cierra el crédito
+  actual (`REFINANCIADO`), traslada el saldo pendiente + capital adicional a
+  un crédito nuevo con su propio cronograma, y deja ambos créditos enlazados
+  (`refinanced_from_credit_id` / `refinanced_to_credit_id`). Modela el patrón
+  visto en el Excel real ("SE CANCELA CRÉDITO 254 Y SE LE RESTRUCTURA...").
 - Tablero operativo y reportes (quién debe pagar en una fecha, cartera
   vencida, exportación CSV de pagos).
 - Auditoría de operaciones sensibles (`audit_logs`) con valor anterior/nuevo.
@@ -107,11 +129,14 @@ Usuarios de demostración (contraseña `Demo1234*`):
 6. Desembolsar (usuario con permiso `disbursements:write`) → se crea el
    crédito, se genera el cronograma y se ve el número único.
 7. Crédito → registrar un pago o abono → ver imputación y saldo actualizado.
-8. Alertas → clic en "Recalcular alertas (demo)" para ver alertas nuevas
+8. Crédito → registrar un compromiso de pago y un ajuste (descuento, gasto de
+   notificación), y probar "Refinanciar crédito" para ver el nuevo crédito
+   enlazado al anterior.
+9. Alertas → clic en "Recalcular alertas (demo)" para ver alertas nuevas
    llegar en vivo por SSE sin recargar la página.
-9. Reportes → "quién debe pagar en una fecha" y cartera vencida, exportar CSV.
-10. Parámetros → ver la política de mora e imputación como parámetros
-    configurables (no hardcodeados).
+10. Reportes → "quién debe pagar en una fecha" y cartera vencida, exportar CSV.
+11. Parámetros → ver la política de mora, imputación y el modelo de interés
+    como parámetros configurables (no hardcodeados).
 
 El crédito `CR-DEMO-00001` (creado por el seed) ya tiene su primera cuota
 pagada, para mostrar historial de pagos sin pasos manuales adicionales.
@@ -137,10 +162,19 @@ Estos valores son **de demostración**, marcados explícitamente en el código
 (`schedule.service.ts`, `delinquency.service.ts`, `seed.ts`) y deben
 confirmarse antes de producción:
 
-- Fórmula de interés: sistema francés de cuota fija, tasa mensual nominal.
+- Fórmula de interés: fija simple sobre capital original (verificada contra
+  datos reales), tasa de demostración 4% mensual.
 - Orden de imputación: mora → interés → capital.
 - Política de mora: 3 días de gracia, tasa diaria de demostración, sin tope.
 - Umbrales de alerta temprana/tardía: 3 días antes / 15 días de mora.
+
+Un hallazgo del Excel real que **no** se implementó todavía, por no tener
+suficiente certeza de si aplica a toda la cartera: junto al 4% cobrado al
+cliente, el Excel también registra una tasa menor (~1,9%) y "aportes del
+tomador de los créditos abiertos", sugiriendo que algunos créditos se fondean
+con capital de un tercero ("tomador") que recibe una tasa distinta a la que
+paga el cliente. Antes de modelar esto hay que confirmar con la cooperativa
+si es un patrón general o excepcional.
 
 Preguntas que deben resolverse con la cooperativa, su asesoría y la contadora
 antes de pasar a producción (no bloquean el prototipo):

@@ -13,13 +13,22 @@ const PERMISSIONS = [
   "parameters:write",
   "audit:read",
   "integration:write",
-  "reports:read"
+  "reports:read",
+  "adjustments:write",
+  "collections:write"
 ];
 
 const ROLES: Record<string, string[]> = {
   ADMIN: PERMISSIONS,
-  OPERADOR: ["associates:write", "applications:write", "payments:write", "alerts:write", "reports:read"],
-  APROBADOR: ["applications:approve", "disbursements:write", "reports:read"],
+  OPERADOR: [
+    "associates:write",
+    "applications:write",
+    "payments:write",
+    "alerts:write",
+    "reports:read",
+    "collections:write"
+  ],
+  APROBADOR: ["applications:approve", "disbursements:write", "reports:read", "adjustments:write"],
   CONTADORA: ["integration:write", "reports:read", "audit:read"],
   CONSULTA: ["reports:read"]
 };
@@ -83,7 +92,14 @@ async function seedParameters() {
     delinquency_policy: DEFAULT_DELINQUENCY_POLICY,
     allocation_order: ["MORA", "INTERES", "CAPITAL"],
     payment_methods: ["EFECTIVO", "TRANSFERENCIA", "CONSIGNACION", "DESCUENTO_NOMINA"],
-    id_types: ["CC", "CE", "TI", "PA", "NIT"]
+    id_types: ["CC", "CE", "TI", "PA", "NIT"],
+    interest_model: {
+      type: "FLAT_SIMPLE",
+      description:
+        "Interés fijo sobre el capital original, repartido en partes iguales entre todas las cuotas. Confirmado contra el histórico real de la cooperativa (créditos a ~4% mensual plano). No es amortización francesa.",
+      defaultMonthlyRatePercent: 4
+    },
+    adjustment_types: ["INTERES_CAMBIO_FECHA", "DESCUENTO", "GASTO_NOTIFICACION", "OTRO"]
   };
   for (const [key, value] of Object.entries(params)) {
     await pool.query(
@@ -99,7 +115,7 @@ async function run() {
   await seedParameters();
 
   const adminId = await upsertUser("admin@cooperativa.demo", "admin", "Administradora Demo", roleIds.ADMIN);
-  await upsertUser("operador@cooperativa.demo", "operador", "Operador de Cartera", roleIds.OPERADOR);
+  const operadorId = await upsertUser("operador@cooperativa.demo", "operador", "Operador de Cartera", roleIds.OPERADOR);
   await upsertUser("aprobador@cooperativa.demo", "aprobador", "Aprobador de Créditos", roleIds.APROBADOR);
   await upsertUser("contadora@cooperativa.demo", "contadora", "Contadora Externa", roleIds.CONTADORA);
   await upsertUser("consulta@cooperativa.demo", "consulta", "Usuario de Consulta", roleIds.CONSULTA);
@@ -129,7 +145,7 @@ async function run() {
   const [appResult] = await pool.query<any>(
     `INSERT INTO credit_applications
       (titular_associate_id, requested_amount, term_value, interest_rate, rate_type, expected_disbursement_date, purpose, status, created_by, decided_by, decided_at)
-     VALUES (?, 5000000, 12, 1.8, 'NOMINAL_MENSUAL', CURDATE(), 'Libre inversión', 'APROBADA', ?, ?, NOW())`,
+     VALUES (?, 5000000, 12, 4, 'NOMINAL_MENSUAL', CURDATE(), 'Libre inversión', 'APROBADA', ?, ?, NOW())`,
     [associateId, adminId, adminId]
   );
   const applicationId = appResult.insertId;
@@ -155,11 +171,13 @@ async function run() {
 
   const [creditResult] = await pool.query<any>(
     `INSERT INTO credits
-      (credit_number, credit_application_id, titular_associate_id, disbursed_amount, principal_balance, interest_rate, rate_type, term_value, disbursement_date, first_installment_date, delinquency_policy_snapshot, parameters_snapshot, created_by)
-     VALUES ('CR-DEMO-00001', ?, ?, 5000000, 5000000, 1.8, 'NOMINAL_MENSUAL', 12, ?, ?, ?, ?, ?)`,
+      (credit_number, credit_application_id, titular_associate_id, assigned_collector_id, assigned_seller_id, disbursed_amount, principal_balance, interest_rate, rate_type, term_value, disbursement_date, first_installment_date, delinquency_policy_snapshot, parameters_snapshot, created_by)
+     VALUES ('CR-DEMO-00001', ?, ?, ?, ?, 5000000, 5000000, 4, 'NOMINAL_MENSUAL', 12, ?, ?, ?, ?, ?)`,
     [
       applicationId,
       associateId,
+      operadorId,
+      adminId,
       disbursementDate.toISOString().slice(0, 10),
       firstInstallmentDate.toISOString().slice(0, 10),
       JSON.stringify(DEFAULT_DELINQUENCY_POLICY),
@@ -177,7 +195,7 @@ async function run() {
 
   const schedule = buildAmortizationSchedule({
     principal: 5000000,
-    monthlyRatePercent: 1.8,
+    monthlyRatePercent: 4,
     termMonths: 12,
     firstInstallmentDate
   });
@@ -223,6 +241,18 @@ async function run() {
     firstInstallment.principal_due,
     creditId
   ]);
+
+  // Compromiso de pago y ajuste de demostración (hallazgos del Excel real).
+  await pool.query(
+    `INSERT INTO collection_actions (credit_id, action_type, description, promise_date, promise_status, created_by)
+     VALUES (?, 'GESTION_COBRO', 'Cliente promete pagar la cuota 2', DATE_ADD(CURDATE(), INTERVAL 3 DAY), 'PENDIENTE', ?)`,
+    [creditId, operadorId]
+  );
+  await pool.query(
+    `INSERT INTO credit_adjustments (credit_id, type, amount, reason, approved_by)
+     VALUES (?, 'GASTO_NOTIFICACION', 15000, 'Costo de notificación por atraso en cuota 2', ?)`,
+    [creditId, adminId]
+  );
 
   console.log("Datos de demostración creados.");
   console.log("Usuarios (contraseña Demo1234*): admin, operador, aprobador, contadora, consulta");

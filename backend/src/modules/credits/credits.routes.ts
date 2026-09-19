@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { pool, withTransaction } from "../../db/pool.js";
-import { disbursementSchema, idParam, paginationQuery } from "../../shared/schemas.js";
+import { disbursementSchema, refinanceSchema, idParam, paginationQuery } from "../../shared/schemas.js";
 import { asyncHandler, HttpError } from "../../middlewares/error.middleware.js";
 import { requireAuth, requirePermission } from "../../middlewares/auth.middleware.js";
 import { buildAmortizationSchedule } from "./schedule.service.js";
@@ -8,6 +8,7 @@ import { recordAudit } from "../audit/audit.service.js";
 import { enqueueIntegrationEvent } from "../integration/integration.service.js";
 import { broadcastEvent } from "../alerts/sse.hub.js";
 import { DEFAULT_DELINQUENCY_POLICY } from "../delinquency/delinquency.service.js";
+import { round2 } from "../../utils/money.js";
 
 export const creditsRouter = Router();
 creditsRouter.use(requireAuth);
@@ -27,7 +28,8 @@ creditsRouter.post(
   requirePermission("disbursements:write"),
   asyncHandler(async (req, res) => {
     const { id } = idParam.parse(req.params);
-    const { disbursementDate, firstInstallmentDate } = disbursementSchema.parse(req.body);
+    const { disbursementDate, firstInstallmentDate, assignedCollectorId, assignedSellerId } =
+      disbursementSchema.parse(req.body);
 
     const credit = await withTransaction(async (conn) => {
       const [rows] = await conn.query<any[]>(`SELECT * FROM credit_applications WHERE id = ?`, [id]);
@@ -39,13 +41,15 @@ creditsRouter.post(
 
       const [result] = await conn.query<any>(
         `INSERT INTO credits
-          (credit_number, credit_application_id, titular_associate_id, titular_society_id, disbursed_amount, principal_balance, interest_rate, rate_type, term_value, disbursement_date, first_installment_date, delinquency_policy_snapshot, parameters_snapshot, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (credit_number, credit_application_id, titular_associate_id, titular_society_id, assigned_collector_id, assigned_seller_id, disbursed_amount, principal_balance, interest_rate, rate_type, term_value, disbursement_date, first_installment_date, delinquency_policy_snapshot, parameters_snapshot, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           creditNumber,
           id,
           app.titular_associate_id,
           app.titular_society_id,
+          assignedCollectorId ?? null,
+          assignedSellerId ?? null,
           app.requested_amount,
           app.requested_amount,
           app.interest_rate,
@@ -138,7 +142,17 @@ creditsRouter.get(
   "/:id",
   asyncHandler(async (req, res) => {
     const { id } = idParam.parse(req.params);
-    const [rows] = await pool.query<any[]>(`SELECT * FROM credits WHERE id = ?`, [id]);
+    const [rows] = await pool.query<any[]>(
+      `SELECT c.*, col.full_name AS collector_name, sel.full_name AS seller_name,
+              rf.credit_number AS refinanced_from_credit_number, rt.credit_number AS refinanced_to_credit_number
+       FROM credits c
+       LEFT JOIN users col ON col.id = c.assigned_collector_id
+       LEFT JOIN users sel ON sel.id = c.assigned_seller_id
+       LEFT JOIN credits rf ON rf.id = c.refinanced_from_credit_id
+       LEFT JOIN credits rt ON rt.id = c.refinanced_to_credit_id
+       WHERE c.id = ?`,
+      [id]
+    );
     const credit = (rows as any[])[0];
     if (!credit) throw new HttpError(404, "Crédito no encontrado");
 
@@ -160,7 +174,117 @@ creditsRouter.get(
        WHERE cp.credit_id = ?`,
       [id]
     );
+    const [adjustments] = await pool.query<any[]>(
+      `SELECT ca.*, u.full_name AS approved_by_name FROM credit_adjustments ca
+       LEFT JOIN users u ON u.id = ca.approved_by
+       WHERE ca.credit_id = ? ORDER BY ca.created_at DESC`,
+      [id]
+    );
+    const [collectionActions] = await pool.query<any[]>(
+      `SELECT * FROM collection_actions WHERE credit_id = ? ORDER BY created_at DESC`,
+      [id]
+    );
 
-    res.json({ ...credit, schedule, payments, alerts, participants });
+    res.json({ ...credit, schedule, payments, alerts, participants, adjustments, collectionActions });
+  })
+);
+
+creditsRouter.post(
+  "/:id/refinance",
+  requirePermission("disbursements:write"),
+  asyncHandler(async (req, res) => {
+      const { id } = idParam.parse(req.params);
+      const { additionalCapital, termValue, interestRate, firstInstallmentDate, reason } = refinanceSchema.parse(
+        req.body
+      );
+
+      const result = await withTransaction(async (conn) => {
+        const [rows] = await conn.query<any[]>(`SELECT * FROM credits WHERE id = ?`, [id]);
+        const oldCredit = (rows as any[])[0];
+        if (!oldCredit) throw new HttpError(404, "Crédito no encontrado");
+        if (!["VIGENTE", "EN_MORA"].includes(oldCredit.status)) {
+          throw new HttpError(409, "Solo se pueden refinanciar créditos vigentes o en mora");
+        }
+
+        const [balanceRows] = await conn.query<any[]>(
+          `SELECT SUM(total_due - principal_paid - interest_paid) AS outstanding
+           FROM credit_schedule_installments WHERE credit_id = ? AND status NOT IN ('ANULADA')`,
+          [id]
+        );
+        const outstanding = Number((balanceRows as any[])[0].outstanding ?? 0);
+        const newPrincipal = round2(outstanding + additionalCapital);
+
+        await conn.query(`UPDATE credits SET status = 'REFINANCIADO' WHERE id = ?`, [id]);
+        await conn.query(
+          `UPDATE credit_schedule_installments SET status = 'ANULADA'
+           WHERE credit_id = ? AND status NOT IN ('PAGADA')`,
+          [id]
+        );
+
+        const creditNumber = await nextCreditNumber();
+        const [insertResult] = await conn.query<any>(
+          `INSERT INTO credits
+            (credit_number, credit_application_id, titular_associate_id, titular_society_id, assigned_collector_id, assigned_seller_id, refinanced_from_credit_id, disbursed_amount, principal_balance, interest_rate, rate_type, term_value, disbursement_date, first_installment_date, delinquency_policy_snapshot, parameters_snapshot, created_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            creditNumber,
+            oldCredit.credit_application_id,
+            oldCredit.titular_associate_id,
+            oldCredit.titular_society_id,
+            oldCredit.assigned_collector_id,
+            oldCredit.assigned_seller_id,
+            id,
+            newPrincipal,
+            newPrincipal,
+            interestRate,
+            oldCredit.rate_type,
+            termValue,
+            new Date().toISOString().slice(0, 10),
+            firstInstallmentDate,
+            JSON.stringify(oldCredit.delinquency_policy_snapshot),
+            JSON.stringify({ rateType: oldCredit.rate_type, termValue }),
+            req.user!.id
+          ]
+        );
+        const newCreditId = insertResult.insertId;
+        await conn.query(`UPDATE credits SET refinanced_to_credit_id = ? WHERE id = ?`, [newCreditId, id]);
+        await conn.query(`UPDATE credit_participants SET credit_id = ? WHERE credit_id = ?`, [newCreditId, id]);
+
+        const schedule = buildAmortizationSchedule({
+          principal: newPrincipal,
+          monthlyRatePercent: interestRate,
+          termMonths: termValue,
+          firstInstallmentDate: new Date(firstInstallmentDate)
+        });
+        for (const row of schedule) {
+          await conn.query(
+            `INSERT INTO credit_schedule_installments
+              (credit_id, installment_number, due_date, principal_due, interest_due, other_due, total_due, balance)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [newCreditId, row.installmentNumber, row.dueDate, row.principalDue, row.interestDue, row.otherDue, row.totalDue, row.totalDue]
+          );
+        }
+
+        await recordAudit(conn, {
+          entity: "credit",
+          entityId: newCreditId,
+          action: "REFINANCE",
+          oldValue: { creditId: id, outstanding, additionalCapital },
+          newValue: { creditNumber, newPrincipal, termValue, interestRate },
+          userId: req.user!.id,
+          ipAddress: req.ip,
+          reason
+        });
+        await enqueueIntegrationEvent(conn, "CREDIT_STATUS_CHANGED", {
+          creditId: id,
+          newStatus: "REFINANCIADO",
+          refinancedToCreditId: newCreditId
+        });
+
+        return { id: newCreditId, creditNumber, refinancedFromCreditId: id };
+      });
+
+    broadcastEvent("credit.refinanced", result);
+    res.status(201).json(result);
   })
 );

@@ -21,7 +21,7 @@ export default function NewApplicationPage() {
     coDebtorAssociateId: "",
     requestedAmount: "",
     termValue: "12",
-    interestRate: "1.8",
+    interestRate: "4",
     purpose: ""
   });
   const [error, setError] = useState<string | null>(null);
@@ -117,7 +117,7 @@ export default function NewApplicationPage() {
 
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-700">
-            Tasa mensual (%) — demo, pendiente de confirmación definitiva
+            Tasa mensual fija (%) — interés simple sobre el capital, igual en cada cuota
           </label>
           <input
             type="number"

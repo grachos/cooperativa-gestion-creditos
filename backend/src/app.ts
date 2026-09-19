@@ -14,6 +14,9 @@ import { reportsRouter } from "./modules/reports/reports.routes.js";
 import { parametersRouter } from "./modules/parameters/parameters.routes.js";
 import { auditRouter } from "./modules/audit/audit.routes.js";
 import { integrationRouter } from "./modules/integration/integration.routes.js";
+import { adjustmentsRouter } from "./modules/credits/adjustments.routes.js";
+import { collectionsRouter } from "./modules/collections/collections.routes.js";
+import { usersRouter } from "./modules/users/users.routes.js";
 
 export const app = express();
 
@@ -28,12 +31,15 @@ app.use("/api/v1/associates", associatesRouter);
 app.use("/api/v1/societies", societiesRouter);
 app.use("/api/v1/applications", applicationsRouter);
 app.use("/api/v1/credits", creditsRouter);
+app.use("/api/v1/credits", adjustmentsRouter);
+app.use("/api/v1/credits", collectionsRouter);
 app.use("/api/v1/payments", paymentsRouter);
 app.use("/api/v1/alerts", alertsRouter);
 app.use("/api/v1/reports", reportsRouter);
 app.use("/api/v1/parameters", parametersRouter);
 app.use("/api/v1/audit", auditRouter);
 app.use("/api/v1/integration", integrationRouter);
+app.use("/api/v1/users", usersRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

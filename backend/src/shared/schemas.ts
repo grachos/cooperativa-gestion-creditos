@@ -61,7 +61,29 @@ export const decisionSchema = z.object({
 
 export const disbursementSchema = z.object({
   disbursementDate: z.string().date(),
-  firstInstallmentDate: z.string().date()
+  firstInstallmentDate: z.string().date(),
+  assignedCollectorId: z.coerce.number().int().positive().optional().nullable(),
+  assignedSellerId: z.coerce.number().int().positive().optional().nullable()
+});
+
+export const refinanceSchema = z.object({
+  additionalCapital: z.coerce.number().min(0).default(0),
+  termValue: z.coerce.number().int().positive(),
+  interestRate: z.coerce.number().positive(),
+  firstInstallmentDate: z.string().date(),
+  reason: z.string().min(3).max(255)
+});
+
+export const adjustmentSchema = z.object({
+  type: z.enum(["INTERES_CAMBIO_FECHA", "DESCUENTO", "GASTO_NOTIFICACION", "OTRO"]),
+  installmentId: z.coerce.number().int().positive().optional().nullable(),
+  amount: z.coerce.number(),
+  reason: z.string().min(3).max(255)
+});
+
+export const promiseSchema = z.object({
+  promiseDate: z.string().date(),
+  description: z.string().max(255).optional().nullable()
 });
 
 export const paymentSchema = z.object({
