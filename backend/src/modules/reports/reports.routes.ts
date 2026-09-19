@@ -13,20 +13,20 @@ reportsRouter.get(
     const [[carteraRows], [morosRows], [pagosRows], [solicitudesRows], [alertasRows]] = await Promise.all([
       pool.query<any[]>(
         `SELECT
-          COALESCE(SUM(principal_balance), 0) as capitalPendiente,
-          COUNT(*) as creditosVigentes
+          COALESCE(SUM(principal_balance), 0) as "capitalPendiente",
+          COUNT(*) as "creditosVigentes"
          FROM credits WHERE status = 'VIGENTE'`
       ),
       pool.query<any[]>(
-        `SELECT COUNT(DISTINCT credit_id) as creditosVencidos
+        `SELECT COUNT(DISTINCT credit_id) as "creditosVencidos"
          FROM credit_schedule_installments WHERE status IN ('VENCIDA','EN_MORA')`
       ),
       pool.query<any[]>(
-        `SELECT COALESCE(SUM(amount), 0) as pagosPeriodo
-         FROM payments WHERE status = 'CONFIRMADO' AND received_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)`
+        `SELECT COALESCE(SUM(amount), 0) as "pagosPeriodo"
+         FROM payments WHERE status = 'CONFIRMADO' AND received_date >= CURRENT_DATE - INTERVAL '30 days'`
       ),
       pool.query<any[]>(
-        `SELECT COUNT(*) as solicitudesPendientes FROM credit_applications WHERE status IN ('RADICADA','EN_REVISION')`
+        `SELECT COUNT(*) as "solicitudesPendientes" FROM credit_applications WHERE status IN ('RADICADA','EN_REVISION')`
       ),
       pool.query<any[]>(
         `SELECT priority, COUNT(*) as total FROM alerts WHERE status = 'ABIERTA' GROUP BY priority`

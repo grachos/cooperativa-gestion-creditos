@@ -7,8 +7,9 @@ exportaciones para el sistema contable externo de la contadora.
 
 Este repositorio contiene la **primera versión demostrable (MVP)**, construida
 con el stack solicitado: React 19 + TypeScript + Vite + Tailwind v4 +
-TanStack Query en el frontend, y Node.js + Express + TypeScript + MySQL2 + Zod
-+ JWT + SSE en el backend.
+TanStack Query en el frontend, y Node.js + Express + TypeScript + Postgres +
+Zod + JWT + SSE en el backend (originalmente MySQL; se migró a Postgres
+para desplegar en Supabase — ver sección 4bis).
 
 ## 1. Resumen ejecutivo
 
@@ -94,11 +95,13 @@ con Vite.
 
 ```
 frontend/  React 19 + TS + Vite + Tailwind v4 + TanStack Query
-backend/   Node + Express + TS + MySQL2 + Zod + JWT + SSE
+backend/   Node + Express + TS + Postgres (pg) + Zod + JWT + SSE
   src/modules/<dominio>/   rutas + servicios por módulo de negocio
   src/db/migrations/       migraciones SQL versionadas (numeradas)
   src/db/seed.ts           datos de demostración
   src/shared/schemas.ts    esquemas Zod (fuente de verdad de validación)
+api/[...path].ts   entrada serverless de Vercel: expone la misma app de Express
+vercel.json         build del frontend + rewrites (raíz del repo)
 ```
 
 El backend es la autoridad final de permisos (middleware `requirePermission`);
@@ -107,7 +110,7 @@ seguridad.
 
 ## 4. Instalación y ejecución (desarrollo)
 
-Requisitos: Node.js 20+, MySQL 8 (o Docker).
+Requisitos: Node.js 20+, Postgres 16 (o Docker).
 
 ```bash
 # 1. Base de datos (opcional, con Docker)
@@ -127,31 +130,65 @@ npm install
 npm run dev              # http://localhost:5173 (proxy a /api hacia el backend)
 ```
 
-## 4bis. Despliegue del frontend en Vercel
+## 4bis. Despliegue en Vercel + Supabase
 
-Vercel no aloja MySQL ni procesos Node de larga duración como Express, así
-que por ahora solo el **frontend** se despliega ahí (sirve como build/deploy
-de demostración de la interfaz; el login y las llamadas a `/api/...`
-fallarán hasta que el backend tenga un host propio con una base de datos
-accesible desde internet — ver sección 9).
+La base de datos es **Postgres** (antes MySQL; ver "Nota de migración" más
+abajo) y el backend corre como **funciones serverless de Vercel**
+(`api/[...path].ts` en la raíz del repo, que expone la misma app de
+Express). Frontend y backend se despliegan juntos, en el mismo proyecto de
+Vercel, mismo dominio — por eso no hace falta configurar CORS entre ellos.
 
-Pasos:
+### Base de datos (Supabase)
+
+1. En [supabase.com](https://supabase.com) → **New Project**.
+2. **Project Settings → Database → Connection string** → copia la URI del
+   **"Transaction pooler"** (puerto `6543`; es la que funciona bien desde
+   funciones serverless, a diferencia de la conexión directa).
+
+### Proyecto de Vercel
 
 1. En [vercel.com](https://vercel.com) → **Add New… → Project** → importa
-   este repositorio de GitHub.
-2. En la configuración del proyecto, **Root Directory** → `frontend`.
-   Vercel detecta Vite automáticamente (`npm run build`, salida `dist`).
-3. `frontend/vercel.json` ya incluye el rewrite necesario para que las
-   rutas de React Router (`/creditos/1`, etc.) no den 404 al recargar.
-4. Si más adelante el backend queda desplegado en otro dominio, configura
-   la variable de entorno `VITE_API_BASE_URL` en el proyecto de Vercel
-   (Settings → Environment Variables) apuntando a
-   `https://tu-backend.dominio.com/api/v1`, y vuelve a desplegar.
+   este repositorio.
+2. **Root Directory**: déjalo en blanco (la raíz del repo) — **no** lo
+   pongas en `frontend`. `vercel.json` en la raíz ya define el build del
+   frontend (`frontend/dist`) y las funciones de `api/` se detectan solas.
+3. **Settings → Environment Variables**, agrega:
 
-Verificado localmente: `npm run build` genera `frontend/dist` sin errores
-de TypeScript, y sirviendo ese `dist` de forma estática se carga el login
-correctamente (sin la base de datos, cualquier intento de ingresar fallará
-con un error de red — comportamiento esperado hasta desplegar el backend).
+   | Variable | Valor |
+   |---|---|
+   | `DATABASE_URL` | la connection string del transaction pooler de Supabase |
+   | `DATABASE_SSL` | `true` |
+   | `JWT_ACCESS_SECRET` | una cadena aleatoria larga |
+   | `JWT_REFRESH_SECRET` | otra cadena aleatoria larga, distinta |
+   | `TIMEZONE` | `America/Bogota` (opcional, ya es el default) |
+   | `CURRENCY` | `COP` (opcional, ya es el default) |
+
+4. Vuelve a desplegar (Deployments → ⋯ → Redeploy) para que tome las
+   variables de entorno.
+5. Corre las migraciones y el seed **contra la base de Supabase** desde tu
+   máquina (no desde Vercel):
+   ```bash
+   cd backend
+   DATABASE_URL="<la misma URI de Supabase>" DATABASE_SSL=true npm run migrate
+   DATABASE_URL="<la misma URI de Supabase>" DATABASE_SSL=true npm run seed
+   ```
+
+Verificado localmente antes de desplegar: se instaló Postgres 16 en el
+entorno de desarrollo y se corrieron las 5 migraciones, el seed, y un flujo
+completo (login, asociado, solicitud → aprobación → desembolso → pago →
+reversión → ajuste → compromiso de pago → refinanciación → reportes)
+exactamente igual que contra MySQL antes de migrar. También se simuló
+localmente la invocación estilo Vercel (la app de Express como handler
+`(req, res)` sin `app.listen()`) para confirmar que `api/[...path].ts`
+funciona antes de depender del despliegue real.
+
+### Nota de migración: por qué Postgres y no MySQL
+
+Vercel no aloja MySQL, y Supabase es Postgres — así que se portaron las 5
+migraciones y todas las consultas del backend de MySQL a Postgres (tipos,
+`ON DUPLICATE KEY` → `ON CONFLICT`, `DATEDIFF`/`CURDATE` → aritmética de
+fechas de Postgres, etc.). El motor de reglas de negocio (cuotas, mora,
+imputación, alertas) no cambió — solo el dialecto SQL.
 
 ## 5. Guion de demo sugerido
 

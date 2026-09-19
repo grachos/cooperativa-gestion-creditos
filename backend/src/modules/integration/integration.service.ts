@@ -1,4 +1,4 @@
-import type { Pool, PoolConnection } from "mysql2/promise";
+import type { PoolLike } from "../../db/pool.js";
 import crypto from "node:crypto";
 
 /**
@@ -9,7 +9,7 @@ import crypto from "node:crypto";
  * y pueden exportarse como CSV/JSON.
  */
 export async function enqueueIntegrationEvent(
-  conn: Pool | PoolConnection,
+  conn: PoolLike,
   eventType: string,
   payload: Record<string, unknown>,
   idempotencyKey?: string
@@ -18,7 +18,7 @@ export async function enqueueIntegrationEvent(
   await conn.query(
     `INSERT INTO integration_events (event_type, idempotency_key, payload, status)
      VALUES (?, ?, ?, 'PENDIENTE')
-     ON DUPLICATE KEY UPDATE id = id`,
+     ON CONFLICT (idempotency_key) DO NOTHING`,
     [eventType, key, JSON.stringify(payload)]
   );
 }

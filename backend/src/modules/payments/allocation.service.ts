@@ -1,4 +1,4 @@
-import type { PoolConnection } from "mysql2/promise";
+import type { PoolConnection } from "../../db/pool.js";
 import { round2 } from "../../utils/money.js";
 import {
   calculateOverdueDays,

@@ -1,36 +1,33 @@
 -- Pagos, imputación, mora, alertas, parámetros, auditoría e integración contable
 
 CREATE TABLE IF NOT EXISTS payments (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  credit_id INT NOT NULL,
+  id SERIAL PRIMARY KEY,
+  credit_id INT NOT NULL REFERENCES credits(id),
   received_date DATE NOT NULL,
   effective_date DATE NULL,
   amount DECIMAL(16,2) NOT NULL,
   payment_method VARCHAR(60) NOT NULL,
   reference VARCHAR(120) NULL,
   notes VARCHAR(255) NULL,
-  status ENUM('CONFIRMADO','REVERSADO') NOT NULL DEFAULT 'CONFIRMADO',
+  status VARCHAR(20) NOT NULL DEFAULT 'CONFIRMADO' CHECK (status IN ('CONFIRMADO','REVERSADO')),
   reversal_reason VARCHAR(255) NULL,
   created_by INT NOT NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (credit_id) REFERENCES credits(id)
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS payment_allocations (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  payment_id INT NOT NULL,
-  installment_id INT NOT NULL,
-  concept ENUM('GASTOS','MORA','INTERES','CAPITAL') NOT NULL,
+  id SERIAL PRIMARY KEY,
+  payment_id INT NOT NULL REFERENCES payments(id) ON DELETE CASCADE,
+  installment_id INT NOT NULL REFERENCES credit_schedule_installments(id),
+  concept VARCHAR(20) NOT NULL CHECK (concept IN ('GASTOS','MORA','INTERES','CAPITAL')),
   amount DECIMAL(16,2) NOT NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (payment_id) REFERENCES payments(id) ON DELETE CASCADE,
-  FOREIGN KEY (installment_id) REFERENCES credit_schedule_installments(id)
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS delinquency_calculations (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  credit_id INT NOT NULL,
-  installment_id INT NOT NULL,
+  id SERIAL PRIMARY KEY,
+  credit_id INT NOT NULL REFERENCES credits(id),
+  installment_id INT NOT NULL REFERENCES credit_schedule_installments(id),
   calculation_date DATE NOT NULL,
   overdue_days INT NOT NULL,
   base_amount DECIMAL(16,2) NOT NULL,
@@ -38,89 +35,87 @@ CREATE TABLE IF NOT EXISTS delinquency_calculations (
   policy_version VARCHAR(40) NOT NULL,
   result_amount DECIMAL(16,2) NOT NULL,
   generated_by VARCHAR(40) NOT NULL DEFAULT 'SYSTEM',
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (credit_id) REFERENCES credits(id),
-  FOREIGN KEY (installment_id) REFERENCES credit_schedule_installments(id)
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS collection_actions (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  credit_id INT NOT NULL,
-  action_type ENUM('NOTIFICACION','GESTION_COBRO','PREPARACION_JURIDICA') NOT NULL,
+  id SERIAL PRIMARY KEY,
+  credit_id INT NOT NULL REFERENCES credits(id),
+  action_type VARCHAR(30) NOT NULL CHECK (action_type IN ('NOTIFICACION','GESTION_COBRO','PREPARACION_JURIDICA')),
   description VARCHAR(255) NULL,
-  status ENUM('PENDIENTE','EN_PROCESO','COMPLETADA') NOT NULL DEFAULT 'PENDIENTE',
+  status VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE' CHECK (status IN ('PENDIENTE','EN_PROCESO','COMPLETADA')),
   created_by INT NOT NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (credit_id) REFERENCES credits(id)
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS alerts (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  credit_id INT NULL,
-  installment_id INT NULL,
+  id SERIAL PRIMARY KEY,
+  credit_id INT NULL REFERENCES credits(id),
+  installment_id INT NULL REFERENCES credit_schedule_installments(id),
   type VARCHAR(60) NOT NULL,
-  priority ENUM('BAJA','MEDIA','ALTA') NOT NULL DEFAULT 'MEDIA',
+  priority VARCHAR(10) NOT NULL DEFAULT 'MEDIA' CHECK (priority IN ('BAJA','MEDIA','ALTA')),
   message VARCHAR(255) NOT NULL,
-  status ENUM('ABIERTA','ATENDIDA','DESCARTADA') NOT NULL DEFAULT 'ABIERTA',
+  status VARCHAR(20) NOT NULL DEFAULT 'ABIERTA' CHECK (status IN ('ABIERTA','ATENDIDA','DESCARTADA')),
   assigned_to INT NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  resolved_at TIMESTAMP NULL,
-  FOREIGN KEY (credit_id) REFERENCES credits(id),
-  FOREIGN KEY (installment_id) REFERENCES credit_schedule_installments(id)
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  resolved_at TIMESTAMPTZ NULL
 );
 
 CREATE TABLE IF NOT EXISTS parameters (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  `key` VARCHAR(80) NOT NULL UNIQUE,
-  value JSON NOT NULL,
+  id SERIAL PRIMARY KEY,
+  "key" VARCHAR(80) NOT NULL UNIQUE,
+  value JSONB NOT NULL,
   description VARCHAR(255) NULL,
   updated_by INT NULL,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE TRIGGER trg_parameters_updated_at BEFORE UPDATE ON parameters
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TABLE IF NOT EXISTS audit_logs (
-  id INT AUTO_INCREMENT PRIMARY KEY,
+  id SERIAL PRIMARY KEY,
   entity VARCHAR(60) NOT NULL,
   entity_id VARCHAR(40) NOT NULL,
   action VARCHAR(60) NOT NULL,
-  old_value JSON NULL,
-  new_value JSON NULL,
+  old_value JSONB NULL,
+  new_value JSONB NULL,
   user_id INT NULL,
   ip_address VARCHAR(64) NULL,
   reason VARCHAR(255) NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS integration_events (
-  id INT AUTO_INCREMENT PRIMARY KEY,
+  id SERIAL PRIMARY KEY,
   event_type VARCHAR(60) NOT NULL,
   idempotency_key VARCHAR(120) NOT NULL UNIQUE,
-  payload JSON NOT NULL,
-  status ENUM('PENDIENTE','ENVIADO','CONFIRMADO','FALLIDO','REINTENTANDO') NOT NULL DEFAULT 'PENDIENTE',
+  payload JSONB NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE'
+    CHECK (status IN ('PENDIENTE','ENVIADO','CONFIRMADO','FALLIDO','REINTENTANDO')),
   attempts INT NOT NULL DEFAULT 0,
   last_error VARCHAR(500) NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE TRIGGER trg_integration_events_updated_at BEFORE UPDATE ON integration_events
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TABLE IF NOT EXISTS integration_attempts (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  integration_event_id INT NOT NULL,
+  id SERIAL PRIMARY KEY,
+  integration_event_id INT NOT NULL REFERENCES integration_events(id) ON DELETE CASCADE,
   attempt_number INT NOT NULL,
   response_summary VARCHAR(500) NULL,
   success BOOLEAN NOT NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (integration_event_id) REFERENCES integration_events(id) ON DELETE CASCADE
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS notifications (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  user_id INT NOT NULL,
+  id SERIAL PRIMARY KEY,
+  user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   title VARCHAR(160) NOT NULL,
   body VARCHAR(500) NULL,
-  read_at TIMESTAMP NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  read_at TIMESTAMPTZ NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX idx_payments_credit ON payments (credit_id);

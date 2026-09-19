@@ -1,69 +1,68 @@
 -- Solicitudes, aprobación, desembolso, créditos y cronograma
 
 CREATE TABLE IF NOT EXISTS credit_applications (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  titular_associate_id INT NULL,
-  titular_society_id INT NULL,
+  id SERIAL PRIMARY KEY,
+  titular_associate_id INT NULL REFERENCES associates(id),
+  titular_society_id INT NULL REFERENCES societies(id),
   requested_amount DECIMAL(16,2) NOT NULL,
   term_value INT NOT NULL,
-  term_unit ENUM('MESES') NOT NULL DEFAULT 'MESES',
+  term_unit VARCHAR(10) NOT NULL DEFAULT 'MESES' CHECK (term_unit IN ('MESES')),
   interest_rate DECIMAL(8,4) NOT NULL,
-  rate_type ENUM('NOMINAL_MENSUAL','EFECTIVA_ANUAL') NOT NULL DEFAULT 'NOMINAL_MENSUAL',
-  payment_frequency ENUM('MENSUAL') NOT NULL DEFAULT 'MENSUAL',
+  rate_type VARCHAR(20) NOT NULL DEFAULT 'NOMINAL_MENSUAL' CHECK (rate_type IN ('NOMINAL_MENSUAL','EFECTIVA_ANUAL')),
+  payment_frequency VARCHAR(10) NOT NULL DEFAULT 'MENSUAL' CHECK (payment_frequency IN ('MENSUAL')),
   expected_disbursement_date DATE NULL,
   due_day_rule VARCHAR(60) NULL,
   purpose VARCHAR(255) NULL,
   notes TEXT NULL,
-  status ENUM('BORRADOR','RADICADA','EN_REVISION','APROBADA','RECHAZADA','CANCELADA','DESEMBOLSADA') NOT NULL DEFAULT 'BORRADOR',
+  status VARCHAR(20) NOT NULL DEFAULT 'BORRADOR'
+    CHECK (status IN ('BORRADOR','RADICADA','EN_REVISION','APROBADA','RECHAZADA','CANCELADA','DESEMBOLSADA')),
   rejection_reason VARCHAR(255) NULL,
   created_by INT NOT NULL,
   decided_by INT NULL,
-  decided_at TIMESTAMP NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  FOREIGN KEY (titular_associate_id) REFERENCES associates(id),
-  FOREIGN KEY (titular_society_id) REFERENCES societies(id)
+  decided_at TIMESTAMPTZ NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE TRIGGER trg_credit_applications_updated_at BEFORE UPDATE ON credit_applications
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TABLE IF NOT EXISTS credit_application_status_history (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  credit_application_id INT NOT NULL,
+  id SERIAL PRIMARY KEY,
+  credit_application_id INT NOT NULL REFERENCES credit_applications(id) ON DELETE CASCADE,
   from_status VARCHAR(30) NULL,
   to_status VARCHAR(30) NOT NULL,
   reason VARCHAR(255) NULL,
   user_id INT NOT NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (credit_application_id) REFERENCES credit_applications(id) ON DELETE CASCADE
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS credits (
-  id INT AUTO_INCREMENT PRIMARY KEY,
+  id SERIAL PRIMARY KEY,
   credit_number VARCHAR(30) NOT NULL UNIQUE,
-  credit_application_id INT NOT NULL,
-  titular_associate_id INT NULL,
-  titular_society_id INT NULL,
+  credit_application_id INT NOT NULL REFERENCES credit_applications(id),
+  titular_associate_id INT NULL REFERENCES associates(id),
+  titular_society_id INT NULL REFERENCES societies(id),
   disbursed_amount DECIMAL(16,2) NOT NULL,
   principal_balance DECIMAL(16,2) NOT NULL,
   interest_rate DECIMAL(8,4) NOT NULL,
-  rate_type ENUM('NOMINAL_MENSUAL','EFECTIVA_ANUAL') NOT NULL,
+  rate_type VARCHAR(20) NOT NULL CHECK (rate_type IN ('NOMINAL_MENSUAL','EFECTIVA_ANUAL')),
   term_value INT NOT NULL,
-  payment_frequency ENUM('MENSUAL') NOT NULL DEFAULT 'MENSUAL',
+  payment_frequency VARCHAR(10) NOT NULL DEFAULT 'MENSUAL' CHECK (payment_frequency IN ('MENSUAL')),
   disbursement_date DATE NOT NULL,
   first_installment_date DATE NOT NULL,
-  status ENUM('VIGENTE','EN_MORA','PAGADO','ANULADO') NOT NULL DEFAULT 'VIGENTE',
-  delinquency_policy_snapshot JSON NULL,
-  parameters_snapshot JSON NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'VIGENTE' CONSTRAINT chk_credits_status CHECK (status IN ('VIGENTE','EN_MORA','PAGADO','ANULADO')),
+  delinquency_policy_snapshot JSONB NULL,
+  parameters_snapshot JSONB NULL,
   created_by INT NOT NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  FOREIGN KEY (credit_application_id) REFERENCES credit_applications(id),
-  FOREIGN KEY (titular_associate_id) REFERENCES associates(id),
-  FOREIGN KEY (titular_society_id) REFERENCES societies(id)
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE TRIGGER trg_credits_updated_at BEFORE UPDATE ON credits
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TABLE IF NOT EXISTS credit_schedule_installments (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  credit_id INT NOT NULL,
+  id SERIAL PRIMARY KEY,
+  credit_id INT NOT NULL REFERENCES credits(id) ON DELETE CASCADE,
   installment_number INT NOT NULL,
   due_date DATE NOT NULL,
   principal_due DECIMAL(16,2) NOT NULL,
@@ -76,12 +75,14 @@ CREATE TABLE IF NOT EXISTS credit_schedule_installments (
   other_paid DECIMAL(16,2) NOT NULL DEFAULT 0,
   balance DECIMAL(16,2) NOT NULL,
   overdue_days INT NOT NULL DEFAULT 0,
-  status ENUM('PENDIENTE','PAGADA','PARCIAL','VENCIDA','EN_MORA','ANULADA') NOT NULL DEFAULT 'PENDIENTE',
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  FOREIGN KEY (credit_id) REFERENCES credits(id) ON DELETE CASCADE,
-  UNIQUE KEY uq_credit_installment (credit_id, installment_number)
+  status VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE'
+    CHECK (status IN ('PENDIENTE','PAGADA','PARCIAL','VENCIDA','EN_MORA','ANULADA')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_credit_installment UNIQUE (credit_id, installment_number)
 );
+CREATE TRIGGER trg_installments_updated_at BEFORE UPDATE ON credit_schedule_installments
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE INDEX idx_installments_due_date ON credit_schedule_installments (due_date);
 CREATE INDEX idx_installments_status ON credit_schedule_installments (status);

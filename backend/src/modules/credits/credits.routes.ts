@@ -127,7 +127,7 @@ creditsRouter.get(
 
     const [rows] = await pool.query<any[]>(
       `SELECT c.*, a.first_name, a.last_name, s.legal_name,
-              (SELECT MAX(GREATEST(DATEDIFF(CURDATE(), csi.due_date), 0))
+              (SELECT MAX(GREATEST((CURRENT_DATE - csi.due_date), 0))
                FROM credit_schedule_installments csi
                WHERE csi.credit_id = c.id AND csi.status NOT IN ('PAGADA','ANULADA')) AS max_overdue_days
        FROM credits c

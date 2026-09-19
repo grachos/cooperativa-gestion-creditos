@@ -1,7 +1,7 @@
-import type { Pool, PoolConnection } from "mysql2/promise";
+import type { PoolLike } from "../../db/pool.js";
 
 export async function recordAudit(
-  conn: Pool | PoolConnection,
+  conn: PoolLike,
   params: {
     entity: string;
     entityId: string | number;

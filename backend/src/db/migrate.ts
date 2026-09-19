@@ -22,15 +22,13 @@ async function run() {
   for (const file of files) {
     if (applied.has(file)) continue;
     const sql = fs.readFileSync(path.join(dir, file), "utf8");
-    const statements = sql
-      .split(";")
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0);
     const conn = await pool.getConnection();
     try {
-      for (const stmt of statements) {
-        await conn.query(stmt);
-      }
+      // Se ejecuta el archivo completo en una sola sentencia: Postgres
+      // soporta múltiples statements separados por ";" en una sola consulta
+      // (protocolo simple), y así no se rompen los cuerpos de función
+      // delimitados con $$ ... $$ que sí contienen punto y coma.
+      await conn.query(sql);
       await conn.query("INSERT INTO schema_migrations (name) VALUES (?)", [file]);
       console.log(`Aplicada migración: ${file}`);
     } finally {
