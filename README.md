@@ -159,11 +159,19 @@ Vercel, mismo dominio — por eso no hace falta configurar CORS entre ellos.
 2. **Root Directory**: déjalo en blanco (la raíz del repo) — **no** lo
    pongas en `frontend`. `vercel.json` en la raíz ya define el build del
    frontend (`frontend/dist`) y las funciones de `api/` se detectan solas.
-3. **Settings → Environment Variables**, agrega:
+3. **Settings → Environment Variables**, agrega. La contraseña que genera
+   Supabase suele traer caracteres especiales (`@ # ? %`) que rompen el
+   parseo de una URL de conexión si no van con *percent-encoding*; para
+   evitar ese problema por completo, usa las variables sueltas en vez de
+   `DATABASE_URL`:
 
    | Variable | Valor |
    |---|---|
-   | `DATABASE_URL` | la connection string del transaction pooler de Supabase |
+   | `DB_HOST` | host del *transaction pooler* de Supabase (ej. `aws-0-us-west-2.pooler.supabase.com`) |
+   | `DB_PORT` | `6543` |
+   | `DB_USER` | usuario del pooler (ej. `postgres.<project-ref>`) |
+   | `DB_PASSWORD` | la contraseña de la base, tal cual (sin corchetes ni escapar nada) |
+   | `DB_NAME` | `postgres` |
    | `DATABASE_SSL` | `true` |
    | `JWT_ACCESS_SECRET` | una cadena aleatoria larga |
    | `JWT_REFRESH_SECRET` | otra cadena aleatoria larga, distinta |
@@ -172,13 +180,24 @@ Vercel, mismo dominio — por eso no hace falta configurar CORS entre ellos.
 
 4. Vuelve a desplegar (Deployments → ⋯ → Redeploy) para que tome las
    variables de entorno.
-5. Corre las migraciones y el seed **contra la base de Supabase** desde tu
-   máquina (no desde Vercel):
-   ```bash
-   cd backend
-   DATABASE_URL="<la misma URI de Supabase>" DATABASE_SSL=true npm run migrate
-   DATABASE_URL="<la misma URI de Supabase>" DATABASE_SSL=true npm run seed
-   ```
+5. Corre las migraciones y el seed **contra la base de Supabase**, una sola
+   vez, desde tu máquina (no desde Vercel — sus funciones no exponen una
+   terminal). Dos formas, cualquiera de las dos sirve:
+
+   - **Sin instalar nada**: pega `supabase_setup.sql` (las 6 migraciones ya
+     concatenadas) en Supabase → **SQL Editor → New query → Run**. Después
+     corre solo el seed:
+     ```bash
+     cd backend
+     DB_HOST=... DB_PORT=6543 DB_USER=... DB_PASSWORD=... DB_NAME=postgres DATABASE_SSL=true npm run seed
+     ```
+   - **Con Node instalado**: corre migrate y seed normal, con las mismas
+     variables sueltas de la tabla de arriba en vez de `DATABASE_URL`:
+     ```bash
+     cd backend
+     DB_HOST=... DB_PORT=6543 DB_USER=... DB_PASSWORD=... DB_NAME=postgres DATABASE_SSL=true npm run migrate
+     DB_HOST=... DB_PORT=6543 DB_USER=... DB_PASSWORD=... DB_NAME=postgres DATABASE_SSL=true npm run seed
+     ```
 
 Verificado localmente antes de desplegar: se instaló Postgres 16 en el
 entorno de desarrollo y se corrieron las 5 migraciones, el seed, y un flujo
