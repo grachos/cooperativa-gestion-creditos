@@ -56,6 +56,8 @@ interface CreditDetail {
   interest_rate: string;
   status: string;
   disbursement_date: string;
+  moraCode: string | null;
+  moraLabel: string | null;
   collector_name: string | null;
   seller_name: string | null;
   refinanced_from_credit_number: string | null;
@@ -86,6 +88,15 @@ export default function CreditDetailPage() {
       <h1 className="mb-1 text-xl font-semibold text-slate-800">Crédito {data.credit_number}</h1>
       <p className="mb-1 text-sm text-slate-400">
         Estado: {data.status} · Desembolsado: {formatDate(data.disbursement_date)}
+        {data.moraCode && (
+          <>
+            {" "}
+            ·{" "}
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+              {data.moraCode} · {data.moraLabel}
+            </span>
+          </>
+        )}
       </p>
       <p className="mb-4 text-sm text-slate-400">
         Gestor: {data.collector_name ?? "Sin asignar"} · Vendedor: {data.seller_name ?? "Sin asignar"}

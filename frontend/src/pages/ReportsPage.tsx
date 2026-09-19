@@ -20,6 +20,14 @@ interface OverdueRow {
   first_name: string | null;
   last_name: string | null;
   credit_number: string;
+  moraCode: string;
+}
+
+interface MoraBucket {
+  code: string;
+  label: string;
+  count: number;
+  value: number;
 }
 
 export default function ReportsPage() {
@@ -32,6 +40,10 @@ export default function ReportsPage() {
   const overdueQuery = useQuery({
     queryKey: ["report-overdue"],
     queryFn: () => api.get<{ data: OverdueRow[] }>("/reports/overdue")
+  });
+  const moraBucketsQuery = useQuery({
+    queryKey: ["report-mora-buckets"],
+    queryFn: () => api.get<{ data: MoraBucket[] }>("/reports/mora-buckets")
   });
 
   return (
@@ -76,6 +88,29 @@ export default function ReportsPage() {
       </div>
 
       <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
+        <h2 className="mb-1 text-sm font-semibold text-slate-700">Mora por bucket</h2>
+        <p className="mb-3 text-xs text-slate-400">
+          Mismos códigos que usa la cooperativa hoy en su Excel (CD001 al día, CM030…CM180 días de atraso).
+        </p>
+        {moraBucketsQuery.isLoading && <Loading />}
+        {moraBucketsQuery.error && <ErrorView message={(moraBucketsQuery.error as Error).message} />}
+        {moraBucketsQuery.data && (
+          <div className="flex flex-wrap gap-3">
+            {moraBucketsQuery.data.data.map((b) => (
+              <div key={b.code} className="rounded-lg bg-slate-50 px-3 py-2 text-sm">
+                <p className="font-semibold">
+                  {b.code} · {b.label}
+                </p>
+                <p className="text-slate-500">
+                  {b.count} cuota{b.count === 1 ? "" : "s"} · {formatCurrency(b.value)}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
         <h2 className="mb-3 text-sm font-semibold text-slate-700">Cuotas vencidas y días de atraso</h2>
         {overdueQuery.isLoading && <Loading />}
         {overdueQuery.error && <ErrorView message={(overdueQuery.error as Error).message} />}
@@ -89,6 +124,7 @@ export default function ReportsPage() {
                 <th className="py-1">Crédito</th>
                 <th className="py-1">Titular</th>
                 <th className="py-1">Días de atraso</th>
+                <th className="py-1">Mora</th>
                 <th className="py-1">Saldo</th>
               </tr>
             </thead>
@@ -98,6 +134,9 @@ export default function ReportsPage() {
                   <td className="py-1">{r.credit_number}</td>
                   <td className="py-1">{r.first_name ? `${r.first_name} ${r.last_name}` : "—"}</td>
                   <td className="py-1">{r.overdue_days}</td>
+                  <td className="py-1">
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs">{r.moraCode}</span>
+                  </td>
                   <td className="py-1">{formatCurrency(r.balance)}</td>
                 </tr>
               ))}

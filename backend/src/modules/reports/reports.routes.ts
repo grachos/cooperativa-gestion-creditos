@@ -2,6 +2,7 @@ import { Router } from "express";
 import { pool } from "../../db/pool.js";
 import { requireAuth } from "../../middlewares/auth.middleware.js";
 import { asyncHandler } from "../../middlewares/error.middleware.js";
+import { MORA_BUCKETS, getMoraBucket } from "../delinquency/delinquency.service.js";
 
 export const reportsRouter = Router();
 reportsRouter.use(requireAuth);
@@ -71,7 +72,43 @@ reportsRouter.get(
        LEFT JOIN associates a ON a.id = c.titular_associate_id
        WHERE csi.status IN ('VENCIDA','EN_MORA') ORDER BY csi.overdue_days DESC`
     );
-    res.json({ data: rows });
+    const data = (rows as any[]).map((row) => ({ ...row, moraCode: getMoraBucket(row.overdue_days).code }));
+    res.json({ data });
+  })
+);
+
+/**
+ * Mora por bucket de días (30/60/90/120/150/180), igual a la clasificación
+ * "CÓDIGO DE MORA" del Excel real de la cooperativa. Equivalente a las
+ * columnas "Cuotas en mora" / "Mora al cierre del mes" de su informe
+ * mensual, calculado aquí en tiempo real en vez de por corte mensual.
+ */
+reportsRouter.get(
+  "/mora-buckets",
+  asyncHandler(async (_req, res) => {
+    const [rows] = await pool.query<any[]>(
+      `SELECT csi.overdue_days, (csi.total_due - csi.principal_paid - csi.interest_paid) AS outstanding
+       FROM credit_schedule_installments csi
+       JOIN credits c ON c.id = csi.credit_id
+       WHERE csi.status NOT IN ('PAGADA','ANULADA') AND c.status NOT IN ('PAGADO','ANULADO') AND csi.overdue_days > 0`
+    );
+
+    const summary = MORA_BUCKETS.filter((b) => b.code !== "CD001").map((b) => ({
+      code: b.code,
+      label: b.label,
+      count: 0,
+      value: 0
+    }));
+
+    for (const row of rows as any[]) {
+      const bucket = getMoraBucket(row.overdue_days);
+      const entry = summary.find((s) => s.code === bucket.code);
+      if (!entry) continue;
+      entry.count += 1;
+      entry.value += Number(row.outstanding);
+    }
+
+    res.json({ data: summary.map((s) => ({ ...s, value: Math.round(s.value * 100) / 100 })) });
   })
 );
 

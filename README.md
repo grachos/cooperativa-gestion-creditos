@@ -41,10 +41,21 @@ con Vite.
   nota de "interés del 4% mensual". Ver `schedule.service.ts`.
 - Registro de pagos y abonos con imputación configurable (mora → interés →
   capital), reversión auditada (nunca borrado físico).
-- Motor de mora parametrizable (días de gracia, tasa/base, tope) — valores de
-  **demostración**, no definitivos.
-- Alertas (próximo vencimiento, vencimiento del día, mora inicial/prolongada)
-  con centro de alertas y actualización en tiempo real vía SSE.
+- **Mora por buckets de 30/60/90/120/150/180 días** (`CD001`, `CM030`…`CM180`),
+  tomados literalmente de la columna "CÓDIGO DE MORA" del Excel real de la
+  cooperativa, en vez de un umbral inventado de "mora inicial/prolongada".
+  Se buscó explícitamente evidencia de interés de mora, recargos o cobros de
+  abogado en el histórico real de observaciones de pago y **no aparece
+  ningún cargo automático**: el único cargo visto fue un "gastos de
+  notificación" de $100.000 aplicado manualmente una vez. Por eso la tasa de
+  mora automática queda en 0% por defecto — la cooperativa hoy no cobra
+  interés de mora, solo clasifica y hace seguimiento por bucket; cualquier
+  cargo puntual se registra como ajuste manual auditable. Ver
+  `delinquency.service.ts`.
+- Alertas por vencimiento (próximo vencimiento, vencimiento del día) y una
+  alerta nueva cada vez que una cuota entra a un bucket de mora distinto, con
+  centro de alertas y actualización en tiempo real vía SSE. El estado del
+  crédito (`VIGENTE`/`EN_MORA`) se sincroniza automáticamente con sus cuotas.
 - **Compromisos de pago** (`collection_actions.promise_date`): fecha en que
   el cliente promete pagar, con seguimiento de cumplido/incumplido — hallazgo
   directo del Excel real (columna "FECHAS DE COMPROMISOS").
@@ -133,10 +144,12 @@ Usuarios de demostración (contraseña `Demo1234*`):
    notificación), y probar "Refinanciar crédito" para ver el nuevo crédito
    enlazado al anterior.
 9. Alertas → clic en "Recalcular alertas (demo)" para ver alertas nuevas
-   llegar en vivo por SSE sin recargar la página.
-10. Reportes → "quién debe pagar en una fecha" y cartera vencida, exportar CSV.
-11. Parámetros → ver la política de mora, imputación y el modelo de interés
-    como parámetros configurables (no hardcodeados).
+   llegar en vivo por SSE sin recargar la página, y el crédito pasar a
+   `EN_MORA` con su código de bucket (CM030…CM180).
+10. Reportes → "quién debe pagar en una fecha", mora por bucket, cartera
+    vencida con su código de mora, y exportar CSV.
+11. Parámetros → ver la política de mora, los buckets, la imputación y el
+    modelo de interés como parámetros configurables (no hardcodeados).
 
 El crédito `CR-DEMO-00001` (creado por el seed) ya tiene su primera cuota
 pagada, para mostrar historial de pagos sin pasos manuales adicionales.
@@ -165,8 +178,12 @@ confirmarse antes de producción:
 - Fórmula de interés: fija simple sobre capital original (verificada contra
   datos reales), tasa de demostración 4% mensual.
 - Orden de imputación: mora → interés → capital.
-- Política de mora: 3 días de gracia, tasa diaria de demostración, sin tope.
-- Umbrales de alerta temprana/tardía: 3 días antes / 15 días de mora.
+- Buckets de mora (CD001/CM030…CM180): tomados literalmente del Excel real.
+  Tasa de mora automática: **0% por defecto**, porque no hay evidencia de que
+  la cooperativa cobre interés de mora hoy — queda como parámetro que se
+  puede activar si la cooperativa confirma que sí quiere cobrarlo hacia
+  adelante.
+- Alerta temprana: 3 días antes del vencimiento.
 
 Un hallazgo del Excel real que **no** se implementó todavía, por no tener
 suficiente certeza de si aplica a toda la cartera: junto al 4% cobrado al

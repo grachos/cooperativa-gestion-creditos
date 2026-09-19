@@ -12,7 +12,19 @@ interface Credit {
   first_name: string | null;
   last_name: string | null;
   legal_name: string | null;
+  moraCode: string | null;
+  moraLabel: string | null;
 }
+
+const MORA_BADGE_CLASS: Record<string, string> = {
+  CD001: "bg-emerald-50 text-emerald-700",
+  CM030: "bg-amber-50 text-amber-700",
+  CM060: "bg-amber-100 text-amber-800",
+  CM090: "bg-orange-100 text-orange-800",
+  CM120: "bg-red-50 text-red-700",
+  CM150: "bg-red-100 text-red-800",
+  CM180: "bg-red-200 text-red-900"
+};
 
 export default function CreditsPage() {
   const { data, isLoading, error } = useQuery({
@@ -36,6 +48,7 @@ export default function CreditsPage() {
                 <th className="px-4 py-2">Titular</th>
                 <th className="px-4 py-2">Saldo capital</th>
                 <th className="px-4 py-2">Estado</th>
+                <th className="px-4 py-2">Mora</th>
               </tr>
             </thead>
             <tbody>
@@ -52,6 +65,13 @@ export default function CreditsPage() {
                   <td className="px-4 py-2">{formatCurrency(c.principal_balance)}</td>
                   <td className="px-4 py-2">
                     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs">{c.status}</span>
+                  </td>
+                  <td className="px-4 py-2">
+                    {c.moraCode && (
+                      <span className={`rounded-full px-2 py-0.5 text-xs ${MORA_BADGE_CLASS[c.moraCode] ?? "bg-slate-100 text-slate-600"}`}>
+                        {c.moraCode} · {c.moraLabel}
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))}

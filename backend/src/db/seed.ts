@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import { pool } from "./pool.js";
 import { buildAmortizationSchedule } from "../modules/credits/schedule.service.js";
-import { DEFAULT_DELINQUENCY_POLICY } from "../modules/delinquency/delinquency.service.js";
+import { DEFAULT_DELINQUENCY_POLICY, MORA_BUCKETS } from "../modules/delinquency/delinquency.service.js";
 
 const PERMISSIONS = [
   "associates:write",
@@ -90,6 +90,7 @@ async function upsertUser(email: string, username: string, fullName: string, rol
 async function seedParameters() {
   const params: Record<string, unknown> = {
     delinquency_policy: DEFAULT_DELINQUENCY_POLICY,
+    mora_buckets: MORA_BUCKETS,
     allocation_order: ["MORA", "INTERES", "CAPITAL"],
     payment_methods: ["EFECTIVO", "TRANSFERENCIA", "CONSIGNACION", "DESCUENTO_NOMINA"],
     id_types: ["CC", "CE", "TI", "PA", "NIT"],

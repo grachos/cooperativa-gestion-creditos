@@ -7,7 +7,7 @@ import { buildAmortizationSchedule } from "./schedule.service.js";
 import { recordAudit } from "../audit/audit.service.js";
 import { enqueueIntegrationEvent } from "../integration/integration.service.js";
 import { broadcastEvent } from "../alerts/sse.hub.js";
-import { DEFAULT_DELINQUENCY_POLICY } from "../delinquency/delinquency.service.js";
+import { DEFAULT_DELINQUENCY_POLICY, getMoraBucket } from "../delinquency/delinquency.service.js";
 import { round2 } from "../../utils/money.js";
 
 export const creditsRouter = Router();
@@ -126,7 +126,10 @@ creditsRouter.get(
     const args = status ? [status] : [];
 
     const [rows] = await pool.query<any[]>(
-      `SELECT c.*, a.first_name, a.last_name, s.legal_name
+      `SELECT c.*, a.first_name, a.last_name, s.legal_name,
+              (SELECT MAX(GREATEST(DATEDIFF(CURDATE(), csi.due_date), 0))
+               FROM credit_schedule_installments csi
+               WHERE csi.credit_id = c.id AND csi.status NOT IN ('PAGADA','ANULADA')) AS max_overdue_days
        FROM credits c
        LEFT JOIN associates a ON a.id = c.titular_associate_id
        LEFT JOIN societies s ON s.id = c.titular_society_id
@@ -134,7 +137,11 @@ creditsRouter.get(
       [...args, pageSize, offset]
     );
     const [countRows] = await pool.query<any[]>(`SELECT COUNT(*) as total FROM credits c ${where}`, args);
-    res.json({ data: rows, page, pageSize, total: (countRows as any[])[0].total });
+    const data = (rows as any[]).map((row) => {
+      const bucket = getMoraBucket(Number(row.max_overdue_days ?? 0));
+      return { ...row, moraCode: row.status === "PAGADO" ? null : bucket.code, moraLabel: row.status === "PAGADO" ? null : bucket.label };
+    });
+    res.json({ data, page, pageSize, total: (countRows as any[])[0].total });
   })
 );
 
@@ -185,7 +192,14 @@ creditsRouter.get(
       [id]
     );
 
-    res.json({ ...credit, schedule, payments, alerts, participants, adjustments, collectionActions });
+    const maxOverdueDays = (schedule as any[])
+      .filter((i) => !["PAGADA", "ANULADA"].includes(i.status))
+      .reduce((max, i) => Math.max(max, i.overdue_days), 0);
+    const bucket = getMoraBucket(maxOverdueDays);
+    const moraCode = credit.status === "PAGADO" ? null : bucket.code;
+    const moraLabel = credit.status === "PAGADO" ? null : bucket.label;
+
+    res.json({ ...credit, moraCode, moraLabel, schedule, payments, alerts, participants, adjustments, collectionActions });
   })
 );
 

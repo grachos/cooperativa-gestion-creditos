@@ -3,6 +3,7 @@ import { round2 } from "../../utils/money.js";
 import {
   calculateOverdueDays,
   calculateLateFee,
+  getMoraBucket,
   DEFAULT_DELINQUENCY_POLICY
 } from "../delinquency/delinquency.service.js";
 
@@ -89,10 +90,12 @@ export async function allocatePayment(
       inst.principal_due - newPrincipalPaid + (inst.interest_due - newInterestPaid)
     );
 
+    // VENCIDA: atrasada pero aún dentro del primer bucket de mora (< 30 días,
+    // código CD001 en el Excel real). EN_MORA: ya entró a un bucket CM030+.
     let status = inst.status;
     if (totalOutstanding <= 0) status = "PAGADA";
     else if (newPrincipalPaid > 0 || newInterestPaid > 0 || newLateFeePaid > 0) status = "PARCIAL";
-    else if (overdueDays > 0) status = "VENCIDA";
+    else if (overdueDays > 0) status = getMoraBucket(overdueDays).code === "CD001" ? "VENCIDA" : "EN_MORA";
 
     await conn.query(
       `UPDATE credit_schedule_installments
