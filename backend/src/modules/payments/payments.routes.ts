@@ -46,8 +46,8 @@ paymentsRouter.post(
 
       for (const line of allocations) {
         await conn.query(
-          `INSERT INTO payment_allocations (payment_id, installment_id, concept, amount) VALUES (?, ?, ?, ?)`,
-          [paymentId, line.installmentId, line.concept, line.amount]
+          `INSERT INTO payment_allocations (payment_id, installment_id, adjustment_id, concept, amount) VALUES (?, ?, ?, ?, ?)`,
+          [paymentId, line.installmentId ?? null, line.adjustmentId ?? null, line.concept, line.amount]
         );
       }
 
@@ -113,14 +113,15 @@ paymentsRouter.post(
       );
 
       for (const alloc of allocations as any[]) {
+        if (alloc.concept === "GASTOS") {
+          await conn.query(`UPDATE credit_adjustments SET paid_amount = paid_amount - ? WHERE id = ?`, [
+            alloc.amount,
+            alloc.adjustment_id
+          ]);
+          continue;
+        }
         const column =
-          alloc.concept === "CAPITAL"
-            ? "principal_paid"
-            : alloc.concept === "INTERES"
-            ? "interest_paid"
-            : alloc.concept === "MORA"
-            ? "late_fee_paid"
-            : "other_paid";
+          alloc.concept === "CAPITAL" ? "principal_paid" : alloc.concept === "INTERES" ? "interest_paid" : "late_fee_paid";
         await conn.query(
           `UPDATE credit_schedule_installments SET ${column} = ${column} - ?,
              status = CASE WHEN status = 'PAGADA' THEN 'PARCIAL' ELSE status END

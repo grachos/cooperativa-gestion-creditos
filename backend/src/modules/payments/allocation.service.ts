@@ -8,16 +8,50 @@ import {
 } from "../delinquency/delinquency.service.js";
 
 export interface AllocationLine {
-  installmentId: number;
   concept: "GASTOS" | "MORA" | "INTERES" | "CAPITAL";
   amount: number;
+  installmentId?: number;
+  adjustmentId?: number;
 }
 
 /**
- * Orden de imputación de demostración: mora, interés, capital.
+ * Orden de imputación real: gastos pendientes (ajustes tipo GASTO_NOTIFICACION
+ * u OTRO), luego mora, interés y capital de la cuota más antigua. Se
+ * confirmó contra el histórico de observaciones de pago de la cooperativa:
+ * "SALDA $91.800 CUOTA 4 + $100.000 DE GASTOS DE NOTIFICACIÓN" — el gasto se
+ * cobra junto con la cuota, no después del capital. Antes, el esquema tenía
+ * el concepto GASTOS en `payment_allocations` pero nunca se usaba.
  * Configurable a futuro vía tabla `parameters` (pendiente de confirmación).
  */
-const ALLOCATION_ORDER: Array<"MORA" | "INTERES" | "CAPITAL"> = ["MORA", "INTERES", "CAPITAL"];
+const INSTALLMENT_ALLOCATION_ORDER: Array<"MORA" | "INTERES" | "CAPITAL"> = ["MORA", "INTERES", "CAPITAL"];
+
+async function allocateOutstandingGastos(
+  conn: PoolConnection,
+  creditId: number,
+  remaining: number,
+  lines: AllocationLine[]
+): Promise<number> {
+  const [adjustments] = await conn.query<any[]>(
+    `SELECT * FROM credit_adjustments
+     WHERE credit_id = ? AND type IN ('GASTO_NOTIFICACION','OTRO') AND amount > paid_amount
+     ORDER BY created_at ASC`,
+    [creditId]
+  );
+
+  for (const adj of adjustments as any[]) {
+    if (remaining <= 0) break;
+    const outstanding = round2(Number(adj.amount) - Number(adj.paid_amount));
+    if (outstanding <= 0) continue;
+    const applied = round2(Math.min(outstanding, remaining));
+    if (applied <= 0) continue;
+
+    remaining = round2(remaining - applied);
+    lines.push({ concept: "GASTOS", amount: applied, adjustmentId: adj.id });
+    await conn.query(`UPDATE credit_adjustments SET paid_amount = paid_amount + ? WHERE id = ?`, [applied, adj.id]);
+  }
+
+  return remaining;
+}
 
 export async function allocatePayment(
   conn: PoolConnection,
@@ -25,6 +59,9 @@ export async function allocatePayment(
   amount: number,
   asOf: Date
 ): Promise<AllocationLine[]> {
+  const lines: AllocationLine[] = [];
+  let remaining = await allocateOutstandingGastos(conn, creditId, amount, lines);
+
   const [installments] = await conn.query<any[]>(
     `SELECT * FROM credit_schedule_installments
      WHERE credit_id = ? AND status IN ('PENDIENTE','PARCIAL','VENCIDA','EN_MORA')
@@ -32,14 +69,12 @@ export async function allocatePayment(
     [creditId]
   );
 
-  let remaining = amount;
-  const lines: AllocationLine[] = [];
-
   for (const raw of installments as any[]) {
     if (remaining <= 0) break;
 
-    // mysql2 devuelve las columnas DECIMAL como string; se convierten a número
-    // antes de cualquier operación aritmética para evitar concatenaciones.
+    // pg (y antes mysql2) devuelve las columnas DECIMAL como string; se
+    // convierten a número antes de cualquier operación aritmética para
+    // evitar concatenaciones.
     const inst = {
       ...raw,
       principal_due: Number(raw.principal_due),
@@ -70,7 +105,7 @@ export async function allocatePayment(
     let interestPaid = 0;
     let lateFeePaid = 0;
 
-    for (const concept of ALLOCATION_ORDER) {
+    for (const concept of INSTALLMENT_ALLOCATION_ORDER) {
       if (remaining <= 0) break;
       const due = outstanding[concept] ?? 0;
       if (due <= 0) continue;

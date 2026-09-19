@@ -33,6 +33,7 @@ interface Adjustment {
   id: number;
   type: string;
   amount: string;
+  paid_amount: string;
   reason: string;
   approved_by_name: string | null;
   created_at: string;
@@ -223,12 +224,21 @@ export default function CreditDetailPage() {
           <p className="mb-3 text-sm text-slate-400">Sin ajustes registrados.</p>
         ) : (
           <ul className="mb-3 space-y-1 text-sm text-slate-600">
-            {data.adjustments.map((a) => (
-              <li key={a.id}>
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs">{a.type}</span>{" "}
-                {formatCurrency(a.amount)} — {a.reason} (autorizó: {a.approved_by_name ?? "—"})
-              </li>
-            ))}
+            {data.adjustments.map((a) => {
+              const collectable = a.type === "GASTO_NOTIFICACION" || a.type === "OTRO";
+              const outstanding = Number(a.amount) - Number(a.paid_amount);
+              return (
+                <li key={a.id}>
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs">{a.type}</span>{" "}
+                  {formatCurrency(a.amount)} — {a.reason} (autorizó: {a.approved_by_name ?? "—"})
+                  {collectable && (
+                    <span className={`ml-2 rounded-full px-2 py-0.5 text-xs ${outstanding <= 0 ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+                      {outstanding <= 0 ? "Cobrado" : `Pendiente ${formatCurrency(outstanding)}`}
+                    </span>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
         {hasPermission("adjustments:write") && (

@@ -40,8 +40,15 @@ con Vite.
   crédito de $4.100.000 a 18 cuotas reparte exactamente $227.777,78 de
   capital y $164.022,22 de interés en cada cuota, consistente con su propia
   nota de "interés del 4% mensual". Ver `schedule.service.ts`.
-- Registro de pagos y abonos con imputación configurable (mora → interés →
-  capital), reversión auditada (nunca borrado físico).
+- Registro de pagos y abonos con **imputación real: gastos → mora → interés
+  → capital**. El orden se confirmó contra el histórico de observaciones de
+  pago de la cooperativa ("SALDA $91.800 CUOTA 4 + $100.000 DE GASTOS DE
+  NOTIFICACIÓN"): un gasto puntual (`credit_adjustments`, p. ej. un costo de
+  notificación) se cobra junto con o antes que la cuota, no después del
+  capital. El esquema ya tenía el concepto GASTOS en `payment_allocations`
+  pero nunca se usaba; ahora los ajustes pendientes de cobro se descuentan
+  automáticamente del siguiente pago. Reversión auditada (nunca borrado
+  físico).
 - **Mora por buckets de 30/60/90/120/150/180 días** (`CD001`, `CM030`…`CM180`),
   tomados literalmente de la columna "CÓDIGO DE MORA" del Excel real de la
   cooperativa, en vez de un umbral inventado de "mora inicial/prolongada".
@@ -240,7 +247,8 @@ confirmarse antes de producción:
 
 - Fórmula de interés: fija simple sobre capital original (verificada contra
   datos reales), tasa de demostración 4% mensual.
-- Orden de imputación: mora → interés → capital.
+- Orden de imputación: gastos → mora → interés → capital (verificado contra
+  el histórico real; ver sección 2).
 - Buckets de mora (CD001/CM030…CM180): tomados literalmente del Excel real.
   Tasa de mora automática: **0% por defecto**, porque no hay evidencia de que
   la cooperativa cobre interés de mora hoy — queda como parámetro que se
