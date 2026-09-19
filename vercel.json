@@ -3,7 +3,9 @@
   "outputDirectory": "frontend/dist",
   "installCommand": "npm install --prefix frontend && npm install --prefix backend",
   "functions": {
-    "api/**/*.ts": {}
+    "api/**/*.ts": {
+      "maxDuration": 30
+    }
   },
   "rewrites": [
     { "source": "/((?!api/).*)", "destination": "/index.html" }
