@@ -30,7 +30,8 @@ applicationsRouter.get(
     const { page, pageSize } = paginationQuery.parse(req.query);
     const status = req.query.status as string | undefined;
     const offset = (page - 1) * pageSize;
-    const where = status ? `WHERE status = ?` : "";
+    const where = status ? `WHERE ca.status = ?` : "";
+    const countWhere = status ? `WHERE status = ?` : "";
     const args = status ? [status] : [];
 
     const [rows] = await pool.query<any[]>(
@@ -42,7 +43,7 @@ applicationsRouter.get(
       [...args, pageSize, offset]
     );
     const [countRows] = await pool.query<any[]>(
-      `SELECT COUNT(*) as total FROM credit_applications ${where}`,
+      `SELECT COUNT(*) as total FROM credit_applications ${countWhere}`,
       args
     );
     res.json({ data: rows, page, pageSize, total: (countRows as any[])[0].total });
