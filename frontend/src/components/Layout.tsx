@@ -64,24 +64,24 @@ export function Layout() {
         </div>
       </aside>
 
-      <div className="flex flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 md:hidden">
           <span className="font-semibold text-slate-800">Cooperativa</span>
           <button onClick={() => void logout()} className="text-sm text-slate-600">
             Salir
           </button>
         </header>
-        <main className="flex-1 overflow-y-auto p-4 md:p-6">
+        <main className="min-w-0 flex-1 overflow-y-auto p-4 md:p-6">
           <Outlet />
         </main>
-        <nav className="grid grid-cols-5 border-t border-slate-200 bg-white md:hidden">
-          {NAV_ITEMS.slice(0, 5).map(({ to, label, icon: Icon }) => (
+        <nav className="flex min-w-0 overflow-x-auto border-t border-slate-200 bg-white md:hidden">
+          {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
               end={to === "/"}
               className={({ isActive }) =>
-                `flex flex-col items-center gap-1 py-2 text-[11px] ${
+                `flex shrink-0 basis-1/5 flex-col items-center gap-1 py-2 text-[11px] ${
                   isActive ? "text-emerald-700" : "text-slate-500"
                 }`
               }
