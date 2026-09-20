@@ -8,6 +8,7 @@ import {
   Bell,
   BarChart3,
   Settings,
+  UserCog,
   LogOut
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
@@ -19,7 +20,8 @@ const NAV_ITEMS = [
   { to: "/creditos", label: "Créditos", icon: Landmark },
   { to: "/alertas", label: "Alertas", icon: Bell },
   { to: "/reportes", label: "Reportes", icon: BarChart3 },
-  { to: "/parametros", label: "Parámetros", icon: Settings }
+  { to: "/parametros", label: "Parámetros", icon: Settings },
+  { to: "/usuarios", label: "Usuarios", icon: UserCog }
 ];
 
 export function Layout() {

@@ -15,7 +15,8 @@ const PERMISSIONS = [
   "integration:write",
   "reports:read",
   "adjustments:write",
-  "collections:write"
+  "collections:write",
+  "users:write"
 ];
 
 const ROLES: Record<string, string[]> = {

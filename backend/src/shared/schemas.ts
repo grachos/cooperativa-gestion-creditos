@@ -109,3 +109,11 @@ export const paginationQuery = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20)
 });
+
+export const createUserSchema = z.object({
+  fullName: z.string().min(3).max(160),
+  email: z.string().email().max(160),
+  username: z.string().min(3).max(80),
+  password: z.string().min(8).max(72),
+  roleCodes: z.array(z.string()).optional().default([])
+});

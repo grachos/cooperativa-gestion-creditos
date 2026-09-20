@@ -13,6 +13,7 @@ import CreditDetailPage from "./pages/CreditDetailPage";
 import AlertsPage from "./pages/AlertsPage";
 import ReportsPage from "./pages/ReportsPage";
 import ParametersPage from "./pages/ParametersPage";
+import UsersPage from "./pages/UsersPage";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -44,6 +45,7 @@ export default function App() {
         <Route path="alertas" element={<AlertsPage />} />
         <Route path="reportes" element={<ReportsPage />} />
         <Route path="parametros" element={<ParametersPage />} />
+        <Route path="usuarios" element={<UsersPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
