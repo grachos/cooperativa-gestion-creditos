@@ -71,10 +71,10 @@ export function Layout() {
             Salir
           </button>
         </header>
-        <main className="min-w-0 flex-1 overflow-y-auto p-4 md:p-6">
+        <main className="min-w-0 flex-1 overflow-y-auto p-4 pb-20 md:p-6">
           <Outlet />
         </main>
-        <nav className="flex min-w-0 overflow-x-auto border-t border-slate-200 bg-white md:hidden">
+        <nav className="fixed inset-x-0 bottom-0 z-20 flex min-w-0 overflow-x-auto border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] md:hidden">
           {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}

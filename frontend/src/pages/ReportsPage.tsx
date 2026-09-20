@@ -406,8 +406,8 @@ export default function ReportsPage() {
       <h1 className="mb-4 text-xl font-semibold text-slate-800">Reportes</h1>
 
       <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <div>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="min-w-0">
             <h2 className="text-sm font-semibold text-slate-700">Reporte mensual de cartera</h2>
             <p className="text-xs text-slate-400">
               Desembolsos, cancelaciones, cuotas y recaudo por mes. No incluye mora al cierre por mes histórico: el
@@ -415,7 +415,7 @@ export default function ReportsPage() {
               abajo para la mora vigente hoy).
             </p>
           </div>
-          <div className="flex shrink-0 gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <select
               className="rounded-md border border-slate-300 px-2 py-1 text-sm"
               value={year}
@@ -523,8 +523,8 @@ export default function ReportsPage() {
       </div>
 
       <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <div>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="min-w-0">
             <h2 className="text-sm font-semibold text-slate-700">Detalle mensual por crédito</h2>
             <p className="text-xs text-slate-400">
               Una fila por crédito abierto ese mes: día de pago, cuotas pagas/pendientes, valor pagado/pendiente
@@ -658,7 +658,7 @@ export default function ReportsPage() {
       </div>
 
       <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-slate-700">¿Quién debe pagar en una fecha?</h2>
           <div className="flex items-center gap-2">
             <input
@@ -705,7 +705,7 @@ export default function ReportsPage() {
       </div>
 
       <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
-        <div className="mb-1 flex items-center justify-between">
+        <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-slate-700">Mora por bucket</h2>
           <button
             type="button"
@@ -738,7 +738,7 @@ export default function ReportsPage() {
       </div>
 
       <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-slate-700">Cuotas vencidas y días de atraso</h2>
           <button
             type="button"
