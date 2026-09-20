@@ -12,8 +12,14 @@ interface AssociateDetail {
   id_number: string;
   phone: string | null;
   email: string | null;
+  address: string | null;
   municipality: string | null;
   department: string | null;
+  income_info: string | null;
+  employer_name: string | null;
+  employer_address: string | null;
+  employer_phone: string | null;
+  employer_email: string | null;
   status: string;
   credits: Array<{ id: number; credit_number: string; status: string; principal_balance: string }>;
   activeAlerts: Array<{ id: number; type: string; priority: string; message: string }>;
@@ -44,9 +50,25 @@ export default function AssociateDetailPage() {
           <h2 className="mb-2 text-sm font-semibold text-slate-700">Datos de contacto</h2>
           <p className="text-sm text-slate-600">Teléfono: {data.phone ?? "—"}</p>
           <p className="text-sm text-slate-600">Correo: {data.email ?? "—"}</p>
+          <p className="text-sm text-slate-600">Dirección: {data.address ?? "—"}</p>
           <p className="text-sm text-slate-600">
             Ubicación: {data.municipality ?? "—"}, {data.department ?? "—"}
           </p>
+          {data.income_info && <p className="text-sm text-slate-600">Ingresos: {data.income_info}</p>}
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <h2 className="mb-2 text-sm font-semibold text-slate-700">Empresa donde trabaja</h2>
+          {data.employer_name || data.employer_address || data.employer_phone || data.employer_email ? (
+            <>
+              <p className="text-sm text-slate-600">Empresa: {data.employer_name ?? "—"}</p>
+              <p className="text-sm text-slate-600">Dirección: {data.employer_address ?? "—"}</p>
+              <p className="text-sm text-slate-600">Teléfono: {data.employer_phone ?? "—"}</p>
+              <p className="text-sm text-slate-600">Correo: {data.employer_email ?? "—"}</p>
+            </>
+          ) : (
+            <p className="text-sm text-slate-400">Sin datos de empresa registrados.</p>
+          )}
         </div>
 
         <div className="rounded-xl border border-slate-200 bg-white p-4">

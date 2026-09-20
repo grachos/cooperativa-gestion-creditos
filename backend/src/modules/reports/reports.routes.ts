@@ -112,6 +112,108 @@ reportsRouter.get(
   })
 );
 
+/**
+ * Reporte mensual de cartera, hallazgo directo del informe real de la
+ * cooperativa (hoja con columnas Año/Mes/Créditos Desembolsados/Valor
+ * Desembolsos/Créditos Cancelados/Valor Cancelados/Cuotas x
+ * recaudo/Recaudado/etc.). Se reconstruyen las columnas que se pueden
+ * calcular con exactitud a partir del histórico actual:
+ *  - Créditos desembolsados y su valor: por `disbursement_date`.
+ *  - Créditos cancelados (pagados en su totalidad) y su valor: se usa
+ *    `updated_at` del crédito como aproximación del mes en que pasó a
+ *    PAGADO (no hay una tabla de historial de estados de crédito; sí existe
+ *    para solicitudes, pero no para créditos). El valor es el monto
+ *    desembolsado original, no el saldo exacto pagado en la cancelación.
+ *  - Cuotas por recaudar (due ese mes) y cuántas quedaron pagadas.
+ *  - Valor recaudado: suma de pagos CONFIRMADOs recibidos ese mes (no
+ *    necesariamente de cuotas que vencían ese mismo mes — es el efectivo
+ *    recaudado en el mes, igual a como lo registra la cooperativa).
+ * No se incluyen columnas de "Mora al cierre del mes" por período histórico:
+ * el sistema no guarda una foto de la mora al cierre de cada mes pasado
+ * (solo el estado/mora actual de cada cuota) — para eso se usa el reporte
+ * en tiempo real `/reports/mora-buckets`.
+ */
+reportsRouter.get(
+  "/monthly-summary",
+  asyncHandler(async (req, res) => {
+    const year = req.query.year ? Number(req.query.year) : null;
+
+    const [rows] = await pool.query<any[]>(
+      `WITH disb AS (
+         SELECT date_trunc('month', disbursement_date)::date AS month,
+                COUNT(*) AS credits_disbursed,
+                SUM(disbursed_amount) AS disbursed_amount
+         FROM credits GROUP BY 1
+       ),
+       cancel AS (
+         SELECT date_trunc('month', updated_at)::date AS month,
+                COUNT(*) AS credits_cancelled,
+                SUM(disbursed_amount) AS cancelled_amount
+         FROM credits WHERE status = 'PAGADO' GROUP BY 1
+       ),
+       due AS (
+         SELECT date_trunc('month', due_date)::date AS month,
+                COUNT(*) AS installments_due,
+                SUM(total_due) AS due_amount,
+                COUNT(*) FILTER (WHERE status = 'PAGADA') AS installments_paid
+         FROM credit_schedule_installments WHERE status != 'ANULADA' GROUP BY 1
+       ),
+       recaudo AS (
+         SELECT date_trunc('month', received_date)::date AS month,
+                SUM(amount) AS collected_amount
+         FROM payments WHERE status = 'CONFIRMADO' GROUP BY 1
+       ),
+       months AS (
+         SELECT month FROM disb
+         UNION SELECT month FROM cancel
+         UNION SELECT month FROM due
+         UNION SELECT month FROM recaudo
+       )
+       SELECT
+         m.month,
+         COALESCE(disb.credits_disbursed, 0) AS "creditsDisbursedCount",
+         COALESCE(disb.disbursed_amount, 0) AS "disbursedAmount",
+         COALESCE(cancel.credits_cancelled, 0) AS "creditsCancelledCount",
+         COALESCE(cancel.cancelled_amount, 0) AS "cancelledAmount",
+         COALESCE(due.installments_due, 0) AS "installmentsDueCount",
+         COALESCE(due.due_amount, 0) AS "dueAmount",
+         COALESCE(due.installments_paid, 0) AS "installmentsPaidCount",
+         COALESCE(recaudo.collected_amount, 0) AS "collectedAmount"
+       FROM months m
+       LEFT JOIN disb ON disb.month = m.month
+       LEFT JOIN cancel ON cancel.month = m.month
+       LEFT JOIN due ON due.month = m.month
+       LEFT JOIN recaudo ON recaudo.month = m.month
+       ${year ? "WHERE EXTRACT(YEAR FROM m.month) = ?" : ""}
+       ORDER BY m.month ASC`,
+      year ? [year] : []
+    );
+
+    const data = (rows as any[]).map((r) => {
+      const dueAmount = Number(r.dueAmount);
+      const collectedAmount = Number(r.collectedAmount);
+      const installmentsDueCount = Number(r.installmentsDueCount);
+      const installmentsPaidCount = Number(r.installmentsPaidCount);
+      return {
+        year: new Date(r.month).getUTCFullYear(),
+        month: new Date(r.month).getUTCMonth() + 1,
+        creditsDisbursedCount: Number(r.creditsDisbursedCount),
+        disbursedAmount: Number(r.disbursedAmount),
+        creditsCancelledCount: Number(r.creditsCancelledCount),
+        cancelledAmount: Number(r.cancelledAmount),
+        installmentsDueCount,
+        dueAmount,
+        installmentsPaidCount,
+        installmentsPaidPercent: installmentsDueCount > 0 ? (installmentsPaidCount / installmentsDueCount) * 100 : 0,
+        collectedAmount,
+        collectedPercent: dueAmount > 0 ? (collectedAmount / dueAmount) * 100 : 0
+      };
+    });
+
+    res.json({ data });
+  })
+);
+
 reportsRouter.get(
   "/payments.csv",
   asyncHandler(async (_req, res) => {

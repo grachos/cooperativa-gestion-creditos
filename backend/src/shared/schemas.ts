@@ -20,6 +20,10 @@ export const associateSchema = z.object({
   department: z.string().max(100).optional().nullable(),
   country: z.string().max(100).optional(),
   incomeInfo: z.string().max(255).optional().nullable(),
+  employerName: z.string().max(160).optional().nullable(),
+  employerAddress: z.string().max(255).optional().nullable(),
+  employerPhone: z.string().max(40).optional().nullable(),
+  employerEmail: z.string().email().max(160).optional().nullable(),
   notes: z.string().optional().nullable(),
   dataConsent: z.boolean().optional()
 });

@@ -114,8 +114,18 @@ function NewAssociateForm({ onCreated }: { onCreated: () => void }) {
     idNumber: "",
     firstName: "",
     lastName: "",
+    birthDate: "",
     phone: "",
-    email: ""
+    email: "",
+    address: "",
+    municipality: "",
+    department: "",
+    incomeInfo: "",
+    employerName: "",
+    employerAddress: "",
+    employerPhone: "",
+    employerEmail: "",
+    dataConsent: false
   });
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -125,7 +135,18 @@ function NewAssociateForm({ onCreated }: { onCreated: () => void }) {
     setError(null);
     setSubmitting(true);
     try {
-      await api.post("/associates", form);
+      const { birthDate, phone, email, address, municipality, department, incomeInfo, employerEmail, ...rest } = form;
+      await api.post("/associates", {
+        ...rest,
+        birthDate: birthDate || undefined,
+        phone: phone || undefined,
+        email: email || undefined,
+        address: address || undefined,
+        municipality: municipality || undefined,
+        department: department || undefined,
+        incomeInfo: incomeInfo || undefined,
+        employerEmail: employerEmail || undefined
+      });
       onCreated();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al crear asociado");
@@ -135,58 +156,141 @@ function NewAssociateForm({ onCreated }: { onCreated: () => void }) {
   }
 
   return (
-    <form onSubmit={onSubmit} className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
-      {error && <p className="mb-3 rounded-md bg-red-50 p-2 text-sm text-red-700">{error}</p>}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <select
-          className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-          value={form.idType}
-          onChange={(e) => setForm({ ...form, idType: e.target.value })}
-        >
-          {["CC", "CE", "TI", "PA", "NIT"].map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
-        <input
-          className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-          placeholder="Número de identificación"
-          value={form.idNumber}
-          onChange={(e) => setForm({ ...form, idNumber: e.target.value })}
-          required
-        />
-        <input
-          className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-          placeholder="Nombres"
-          value={form.firstName}
-          onChange={(e) => setForm({ ...form, firstName: e.target.value })}
-          required
-        />
-        <input
-          className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-          placeholder="Apellidos"
-          value={form.lastName}
-          onChange={(e) => setForm({ ...form, lastName: e.target.value })}
-          required
-        />
-        <input
-          className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-          placeholder="Teléfono"
-          value={form.phone}
-          onChange={(e) => setForm({ ...form, phone: e.target.value })}
-        />
-        <input
-          className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-          placeholder="Correo"
-          value={form.email}
-          onChange={(e) => setForm({ ...form, email: e.target.value })}
-        />
+    <form onSubmit={onSubmit} className="mb-4 space-y-4 rounded-xl border border-slate-200 bg-white p-4">
+      {error && <p className="rounded-md bg-red-50 p-2 text-sm text-red-700">{error}</p>}
+
+      <div>
+        <p className="mb-2 text-xs font-semibold uppercase text-slate-400">Datos personales</p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <select
+            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            value={form.idType}
+            onChange={(e) => setForm({ ...form, idType: e.target.value })}
+          >
+            {["CC", "CE", "TI", "PA", "NIT"].map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+          <input
+            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            placeholder="Número de identificación (cédula)"
+            value={form.idNumber}
+            onChange={(e) => setForm({ ...form, idNumber: e.target.value })}
+            required
+          />
+          <input
+            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            placeholder="Nombres"
+            value={form.firstName}
+            onChange={(e) => setForm({ ...form, firstName: e.target.value })}
+            required
+          />
+          <input
+            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            placeholder="Apellidos"
+            value={form.lastName}
+            onChange={(e) => setForm({ ...form, lastName: e.target.value })}
+            required
+          />
+          <div>
+            <label className="mb-1 block text-xs text-slate-500">Fecha de nacimiento</label>
+            <input
+              type="date"
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              value={form.birthDate}
+              onChange={(e) => setForm({ ...form, birthDate: e.target.value })}
+            />
+          </div>
+          <input
+            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            placeholder="Teléfono de contacto"
+            value={form.phone}
+            onChange={(e) => setForm({ ...form, phone: e.target.value })}
+          />
+          <input
+            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            placeholder="Correo"
+            value={form.email}
+            onChange={(e) => setForm({ ...form, email: e.target.value })}
+          />
+        </div>
       </div>
+
+      <div>
+        <p className="mb-2 text-xs font-semibold uppercase text-slate-400">Domicilio</p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <input
+            className="rounded-md border border-slate-300 px-3 py-2 text-sm sm:col-span-3"
+            placeholder="Dirección"
+            value={form.address}
+            onChange={(e) => setForm({ ...form, address: e.target.value })}
+          />
+          <input
+            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            placeholder="Municipio"
+            value={form.municipality}
+            onChange={(e) => setForm({ ...form, municipality: e.target.value })}
+          />
+          <input
+            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            placeholder="Departamento"
+            value={form.department}
+            onChange={(e) => setForm({ ...form, department: e.target.value })}
+          />
+          <input
+            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            placeholder="Ingresos (información libre)"
+            value={form.incomeInfo}
+            onChange={(e) => setForm({ ...form, incomeInfo: e.target.value })}
+          />
+        </div>
+      </div>
+
+      <div>
+        <p className="mb-2 text-xs font-semibold uppercase text-slate-400">Empresa donde trabaja</p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <input
+            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            placeholder="Empresa"
+            value={form.employerName}
+            onChange={(e) => setForm({ ...form, employerName: e.target.value })}
+          />
+          <input
+            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            placeholder="Dirección de la empresa"
+            value={form.employerAddress}
+            onChange={(e) => setForm({ ...form, employerAddress: e.target.value })}
+          />
+          <input
+            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            placeholder="Teléfono de la empresa"
+            value={form.employerPhone}
+            onChange={(e) => setForm({ ...form, employerPhone: e.target.value })}
+          />
+          <input
+            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            placeholder="Correo de la empresa"
+            value={form.employerEmail}
+            onChange={(e) => setForm({ ...form, employerEmail: e.target.value })}
+          />
+        </div>
+      </div>
+
+      <label className="flex items-center gap-2 text-sm text-slate-600">
+        <input
+          type="checkbox"
+          checked={form.dataConsent}
+          onChange={(e) => setForm({ ...form, dataConsent: e.target.checked })}
+        />
+        El asociado autorizó el tratamiento de sus datos personales
+      </label>
+
       <button
         type="submit"
         disabled={submitting}
-        className="mt-3 rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+        className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
       >
         {submitting ? "Guardando..." : "Guardar asociado"}
       </button>

@@ -74,8 +74,8 @@ associatesRouter.post(
 
     const [result] = await pool.query<any>(
       `INSERT INTO associates
-        (id_type, id_number, first_name, last_name, birth_date, phone, email, address, municipality, department, country, income_info, notes, data_consent, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (id_type, id_number, first_name, last_name, birth_date, phone, email, address, municipality, department, country, income_info, employer_name, employer_address, employer_phone, employer_email, notes, data_consent, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         data.idType,
         data.idNumber,
@@ -89,6 +89,10 @@ associatesRouter.post(
         data.department ?? null,
         data.country ?? "Colombia",
         data.incomeInfo ?? null,
+        data.employerName ?? null,
+        data.employerAddress ?? null,
+        data.employerPhone ?? null,
+        data.employerEmail ?? null,
         data.notes ?? null,
         data.dataConsent ?? false,
         req.user!.id
@@ -129,6 +133,10 @@ associatesRouter.put(
       lastName: "last_name",
       birthDate: "birth_date",
       incomeInfo: "income_info",
+      employerName: "employer_name",
+      employerAddress: "employer_address",
+      employerPhone: "employer_phone",
+      employerEmail: "employer_email",
       dataConsent: "data_consent"
     };
     const setClause = fields.map(([k]) => `${columnMap[k] ?? k} = ?`).join(", ");
