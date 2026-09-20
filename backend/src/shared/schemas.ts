@@ -40,7 +40,7 @@ export const societySchema = z.object({
 export const creditApplicationSchema = z.object({
   titularAssociateId: z.coerce.number().int().positive().optional().nullable(),
   titularSocietyId: z.coerce.number().int().positive().optional().nullable(),
-  coDebtorAssociateIds: z.array(z.coerce.number().int().positive()).max(2).optional(),
+  coDebtorAssociateIds: z.array(z.coerce.number().int().positive()).optional(),
   requestedAmount: z.coerce.number().positive(),
   termValue: z.coerce.number().int().positive(),
   interestRate: z.coerce.number().positive(),

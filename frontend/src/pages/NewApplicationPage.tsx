@@ -18,7 +18,7 @@ export default function NewApplicationPage() {
 
   const [form, setForm] = useState({
     titularAssociateId: "",
-    coDebtorAssociateIds: ["", ""],
+    coDebtorAssociateIds: [] as string[],
     requestedAmount: "",
     termValue: "12",
     interestRate: "4",
@@ -72,35 +72,62 @@ export default function NewApplicationPage() {
           </select>
         </div>
 
-        {[0, 1].map((slot) => (
-          <div key={slot}>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Codeudor {slot + 1} (opcional)
-            </label>
-            <select
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-              value={form.coDebtorAssociateIds[slot]}
-              onChange={(e) => {
-                const next = [...form.coDebtorAssociateIds];
-                next[slot] = e.target.value;
-                setForm({ ...form, coDebtorAssociateIds: next });
-              }}
+        <div>
+          <div className="mb-1 flex items-center justify-between">
+            <label className="block text-sm font-medium text-slate-700">Codeudores (opcional)</label>
+            <button
+              type="button"
+              onClick={() => setForm({ ...form, coDebtorAssociateIds: [...form.coDebtorAssociateIds, ""] })}
+              className="text-sm font-medium text-emerald-700 hover:text-emerald-800"
             >
-              <option value="">Sin codeudor</option>
-              {associates?.data
-                .filter(
-                  (a) =>
-                    String(a.id) !== form.titularAssociateId &&
-                    !form.coDebtorAssociateIds.some((id, i) => i !== slot && id === String(a.id))
-                )
-                .map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.first_name} {a.last_name}
-                  </option>
-                ))}
-            </select>
+              + Agregar codeudor
+            </button>
           </div>
-        ))}
+          <div className="space-y-2">
+            {form.coDebtorAssociateIds.map((value, slot) => (
+              <div key={slot} className="flex gap-2">
+                <select
+                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  value={value}
+                  onChange={(e) => {
+                    const next = [...form.coDebtorAssociateIds];
+                    next[slot] = e.target.value;
+                    setForm({ ...form, coDebtorAssociateIds: next });
+                  }}
+                >
+                  <option value="">Seleccione un codeudor</option>
+                  {associates?.data
+                    .filter(
+                      (a) =>
+                        String(a.id) !== form.titularAssociateId &&
+                        !form.coDebtorAssociateIds.some((id, i) => i !== slot && id === String(a.id))
+                    )
+                    .map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.first_name} {a.last_name}
+                      </option>
+                    ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setForm({
+                      ...form,
+                      coDebtorAssociateIds: form.coDebtorAssociateIds.filter((_, i) => i !== slot)
+                    })
+                  }
+                  className="shrink-0 rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-500 hover:bg-slate-50"
+                  aria-label="Quitar codeudor"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+            {form.coDebtorAssociateIds.length === 0 && (
+              <p className="text-sm text-slate-400">Sin codeudores agregados.</p>
+            )}
+          </div>
+        </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
