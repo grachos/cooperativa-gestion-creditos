@@ -28,7 +28,7 @@ creditsRouter.post(
   requirePermission("disbursements:write"),
   asyncHandler(async (req, res) => {
     const { id } = idParam.parse(req.params);
-    const { disbursementDate, firstInstallmentDate, assignedCollectorId, assignedSellerId } =
+    const { disbursementDate, firstInstallmentDate, assignedCollectorId, assignedSellerId, funderName, funderRatePercent } =
       disbursementSchema.parse(req.body);
 
     const credit = await withTransaction(async (conn) => {
@@ -41,8 +41,8 @@ creditsRouter.post(
 
       const [result] = await conn.query<any>(
         `INSERT INTO credits
-          (credit_number, credit_application_id, titular_associate_id, titular_society_id, assigned_collector_id, assigned_seller_id, disbursed_amount, principal_balance, interest_rate, rate_type, term_value, disbursement_date, first_installment_date, delinquency_policy_snapshot, parameters_snapshot, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (credit_number, credit_application_id, titular_associate_id, titular_society_id, assigned_collector_id, assigned_seller_id, disbursed_amount, principal_balance, interest_rate, rate_type, term_value, disbursement_date, first_installment_date, delinquency_policy_snapshot, parameters_snapshot, funder_name, funder_rate_percent, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           creditNumber,
           id,
@@ -59,6 +59,8 @@ creditsRouter.post(
           firstInstallmentDate,
           JSON.stringify(DEFAULT_DELINQUENCY_POLICY),
           JSON.stringify({ rateType: app.rate_type, termValue: app.term_value }),
+          funderName ?? null,
+          funderRatePercent ?? null,
           req.user!.id
         ]
       );
@@ -73,6 +75,7 @@ creditsRouter.post(
         principal: Number(app.requested_amount),
         monthlyRatePercent: Number(app.interest_rate),
         termMonths: app.term_value,
+        disbursementDate: new Date(disbursementDate),
         firstInstallmentDate: new Date(firstInstallmentDate)
       });
 
@@ -199,7 +202,37 @@ creditsRouter.get(
     const moraCode = credit.status === "PAGADO" ? null : bucket.code;
     const moraLabel = credit.status === "PAGADO" ? null : bucket.label;
 
-    res.json({ ...credit, moraCode, moraLabel, schedule, payments, alerts, participants, adjustments, collectionActions });
+    // Hallazgo del Excel real: cuando el crédito se fondea con capital de un
+    // tercero ("tomador"), la cooperativa cobra al asociado una tasa y le
+    // reconoce al tomador una tasa menor; la diferencia es el margen de la
+    // cooperativa (verificado: 4% al asociado vs 1,9% al tomador, 2,1% de
+    // diferencia, constante en 16 meses consecutivos del histórico real).
+    const funderSummary =
+      credit.funder_rate_percent != null
+        ? {
+            funderName: credit.funder_name,
+            funderRatePercent: Number(credit.funder_rate_percent),
+            clientRatePercent: Number(credit.interest_rate),
+            cooperativeMarginPercent: round2(Number(credit.interest_rate) - Number(credit.funder_rate_percent)),
+            funderMonthlyInterest: round2((Number(credit.principal_balance) * Number(credit.funder_rate_percent)) / 100),
+            cooperativeMarginMonthly: round2(
+              (Number(credit.principal_balance) * (Number(credit.interest_rate) - Number(credit.funder_rate_percent))) / 100
+            )
+          }
+        : null;
+
+    res.json({
+      ...credit,
+      moraCode,
+      moraLabel,
+      funderSummary,
+      schedule,
+      payments,
+      alerts,
+      participants,
+      adjustments,
+      collectionActions
+    });
   })
 );
 
@@ -236,6 +269,7 @@ creditsRouter.post(
         );
 
         const creditNumber = await nextCreditNumber();
+        const refinanceDisbursementDate = new Date().toISOString().slice(0, 10);
         const [insertResult] = await conn.query<any>(
           `INSERT INTO credits
             (credit_number, credit_application_id, titular_associate_id, titular_society_id, assigned_collector_id, assigned_seller_id, refinanced_from_credit_id, disbursed_amount, principal_balance, interest_rate, rate_type, term_value, disbursement_date, first_installment_date, delinquency_policy_snapshot, parameters_snapshot, created_by)
@@ -253,7 +287,7 @@ creditsRouter.post(
             interestRate,
             oldCredit.rate_type,
             termValue,
-            new Date().toISOString().slice(0, 10),
+            refinanceDisbursementDate,
             firstInstallmentDate,
             JSON.stringify(oldCredit.delinquency_policy_snapshot),
             JSON.stringify({ rateType: oldCredit.rate_type, termValue }),
@@ -268,6 +302,7 @@ creditsRouter.post(
           principal: newPrincipal,
           monthlyRatePercent: interestRate,
           termMonths: termValue,
+          disbursementDate: new Date(refinanceDisbursementDate),
           firstInstallmentDate: new Date(firstInstallmentDate)
         });
         for (const row of schedule) {

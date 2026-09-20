@@ -63,7 +63,12 @@ export const disbursementSchema = z.object({
   disbursementDate: z.string().date(),
   firstInstallmentDate: z.string().date(),
   assignedCollectorId: z.coerce.number().int().positive().optional().nullable(),
-  assignedSellerId: z.coerce.number().int().positive().optional().nullable()
+  assignedSellerId: z.coerce.number().int().positive().optional().nullable(),
+  // Hallazgo del Excel real: crédito fondeado por un tercero ("tomador") que
+  // recibe una tasa menor que la que paga el asociado. Opcional: si no se
+  // envía, el crédito se asume fondeado con capital propio de la cooperativa.
+  funderName: z.string().trim().min(1).max(255).optional().nullable(),
+  funderRatePercent: z.coerce.number().min(0).optional().nullable()
 });
 
 export const refinanceSchema = z.object({

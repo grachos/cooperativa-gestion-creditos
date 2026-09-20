@@ -70,10 +70,30 @@ con Vite.
 - **Gestor de cartera y vendedor asignados por crédito** (`assigned_collector_id`,
   `assigned_seller_id`), también tomado del Excel real ("GESTOR A CARGO",
   "VENDEDOR").
-- **Ajustes manuales auditables** (`credit_adjustments`): interés por cambio
-  de fecha, descuentos autorizados, gastos de notificación — en el Excel
-  original eran columnas sueltas sin trazabilidad de quién autorizaba; aquí
-  quedan como movimientos con aprobador obligatorio.
+- **Interés por cambio de fecha en la primera cuota, calculado automáticamente**:
+  hallazgo del Excel real — cuando entre el desembolso y la primera fecha de
+  pago pasan más de ~30 días (ciclo mensual estándar), la cooperativa
+  prorratea el interés de esos días extra y lo suma a la primera cuota.
+  Verificado en 3 créditos reales (p. ej. cuota normal $391.800 → primera
+  cuota $421.800, diferencia exacta $30.000 con 37 días entre desembolso y
+  primer pago). Antes se modelaba solo como ajuste manual; ahora
+  `schedule.service.ts` lo calcula al generar el cronograma.
+- **Ajustes manuales auditables** (`credit_adjustments`): descuentos
+  autorizados, gastos de notificación — en el Excel original eran columnas
+  sueltas sin trazabilidad de quién autorizaba; aquí quedan como movimientos
+  con aprobador obligatorio.
+- **Crédito fondeado por un tercero ("tomador")** (`funder_name`,
+  `funder_rate_percent` en `credits`): hallazgo del Excel real — 16 meses
+  consecutivos muestran "Interés del 4% de los créditos abiertos" (tasa al
+  asociado) junto a "Interés del 1,9% de los créditos abiertos" (tasa al
+  tomador) y "Diferencia del 2,1%" (margen de la cooperativa), cuadrando
+  exactamente mes a mes contra el mismo capital base — un patrón general, no
+  una excepción. Se modela como campos opcionales por crédito; el detalle de
+  crédito expone `funderSummary` con el margen calculado. **No** se modeló
+  "Aportes del tomador de los créditos abiertos": es un saldo acumulado
+  independiente (crece mes a mes sin corresponder al 1,9% de interés ni a un
+  % fijo de capital) — falta confirmar con la cooperativa qué lo genera antes
+  de construirlo.
 - **Refinanciación** (`POST /credits/:id/refinance`): cierra el crédito
   actual (`REFINANCIADO`), traslada el saldo pendiente + capital adicional a
   un crédito nuevo con su propio cronograma, y deja ambos créditos enlazados
@@ -107,7 +127,8 @@ backend/   Node + Express + TS + Postgres (pg) + Zod + JWT + SSE
   src/db/migrations/       migraciones SQL versionadas (numeradas)
   src/db/seed.ts           datos de demostración
   src/shared/schemas.ts    esquemas Zod (fuente de verdad de validación)
-api/[...path].ts   entrada serverless de Vercel: expone la misma app de Express
+api/index.ts       entrada serverless de Vercel: expone la misma app de Express
+                   (vercel.json enruta /api/:path* hacia esta función)
 vercel.json         build del frontend + rewrites (raíz del repo)
 ```
 
@@ -274,14 +295,22 @@ confirmarse antes de producción:
   puede activar si la cooperativa confirma que sí quiere cobrarlo hacia
   adelante.
 - Alerta temprana: 3 días antes del vencimiento.
+- Interés por cambio de fecha (primera cuota): se prorratea sobre el interés
+  mensual estándar del crédito cuando el desembolso y el primer pago quedan
+  a más de 30 días; regla inferida de solo 3 créditos de ejemplo, confirmar
+  la fórmula exacta y el umbral de días con la cooperativa.
+- Tasa del tomador / margen de la cooperativa: modelado como campo por
+  crédito (`funder_rate_percent`), no hay validación de que la diferencia
+  siempre deba ser exactamente 2,1 puntos porcentuales para créditos futuros.
 
-Un hallazgo del Excel real que **no** se implementó todavía, por no tener
-suficiente certeza de si aplica a toda la cartera: junto al 4% cobrado al
-cliente, el Excel también registra una tasa menor (~1,9%) y "aportes del
-tomador de los créditos abiertos", sugiriendo que algunos créditos se fondean
-con capital de un tercero ("tomador") que recibe una tasa distinta a la que
-paga el cliente. Antes de modelar esto hay que confirmar con la cooperativa
-si es un patrón general o excepcional.
+El fondeo por "tomador" (tasa 4% al asociado / 1,9% al tomador / 2,1% margen
+cooperativa) ya se modeló — ver sección 2 — tras confirmar que es un patrón
+general (16 meses consecutivos cuadrando exacto). Lo que **no** se
+implementó todavía: "Aportes del tomador de los créditos abiertos" es un
+saldo acumulado que crece mes a mes de forma independiente al 1,9% de
+interés y al capital abierto (no es una fórmula derivable de las columnas
+disponibles) — falta confirmar con la cooperativa qué operación específica
+lo alimenta antes de modelarlo.
 
 Preguntas que deben resolverse con la cooperativa, su asesoría y la contadora
 antes de pasar a producción (no bloquean el prototipo):

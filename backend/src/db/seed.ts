@@ -199,6 +199,7 @@ async function run() {
     principal: 5000000,
     monthlyRatePercent: 4,
     termMonths: 12,
+    disbursementDate,
     firstInstallmentDate
   });
 
