@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { Loading, ErrorView, EmptyView } from "../components/StateViews";
 import { useAuth } from "../context/AuthContext";
+import { useNotifications } from "../context/NotificationsContext";
 
 interface Alert {
   id: number;
@@ -16,26 +16,12 @@ interface Alert {
 export default function AlertsPage() {
   const { hasPermission } = useAuth();
   const queryClient = useQueryClient();
-  const [liveCount, setLiveCount] = useState(0);
+  const { liveAlertCount } = useNotifications();
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["alerts"],
     queryFn: () => api.get<{ data: Alert[] }>("/alerts")
   });
-
-  useEffect(() => {
-    const token = localStorage.getItem("accessToken");
-    if (!token) return;
-    const source = new EventSource(`/api/v1/alerts/stream?token=${token}`);
-    source.addEventListener("alert.created", () => {
-      setLiveCount((c) => c + 1);
-      void queryClient.invalidateQueries({ queryKey: ["alerts"] });
-    });
-    source.onerror = () => {
-      // El navegador reintenta automáticamente la conexión SSE.
-    };
-    return () => source.close();
-  }, [queryClient]);
 
   async function resolve(id: number) {
     await api.post(`/alerts/${id}/resolve`, {});
@@ -55,7 +41,9 @@ export default function AlertsPage() {
       <div className="mb-4 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-slate-800">Centro de alertas</h1>
-          {liveCount > 0 && <p className="text-xs text-emerald-600">{liveCount} alerta(s) nueva(s) en tiempo real</p>}
+          {liveAlertCount > 0 && (
+            <p className="text-xs text-emerald-600">{liveAlertCount} alerta(s) nueva(s) en tiempo real</p>
+          )}
         </div>
         {hasPermission("alerts:write") && (
           <button

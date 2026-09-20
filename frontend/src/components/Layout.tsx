@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -9,9 +10,13 @@ import {
   BarChart3,
   Settings,
   UserCog,
-  LogOut
+  LogOut,
+  X
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { useNotifications } from "../context/NotificationsContext";
+
+const NOTIF_BANNER_DISMISSED_KEY = "notif_banner_dismissed";
 
 const NAV_ITEMS = [
   { to: "/", label: "Tablero", icon: LayoutDashboard },
@@ -26,6 +31,17 @@ const NAV_ITEMS = [
 
 export function Layout() {
   const { user, logout } = useAuth();
+  const { permission, requestPermission } = useNotifications();
+  const [bannerDismissed, setBannerDismissed] = useState(
+    () => localStorage.getItem(NOTIF_BANNER_DISMISSED_KEY) === "1"
+  );
+
+  function dismissBanner() {
+    localStorage.setItem(NOTIF_BANNER_DISMISSED_KEY, "1");
+    setBannerDismissed(true);
+  }
+
+  const showNotificationBanner = permission === "default" && !bannerDismissed;
 
   return (
     <div className="flex min-h-screen bg-slate-50">
@@ -72,6 +88,29 @@ export function Layout() {
           </button>
         </header>
         <main className="min-w-0 flex-1 overflow-y-auto p-4 pb-20 md:p-6">
+          {showNotificationBanner && (
+            <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+              <div className="flex items-center gap-2 text-sm text-emerald-800">
+                <Bell className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>Active las notificaciones para enterarse al instante cuando se genere una alerta.</span>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  onClick={requestPermission}
+                  className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700"
+                >
+                  Activar notificaciones
+                </button>
+                <button
+                  onClick={dismissBanner}
+                  aria-label="Cerrar aviso de notificaciones"
+                  className="text-emerald-700 hover:text-emerald-900"
+                >
+                  <X className="h-4 w-4" aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+          )}
           <Outlet />
         </main>
         <nav className="fixed inset-x-0 bottom-0 z-20 flex min-w-0 overflow-x-auto border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] md:hidden">
