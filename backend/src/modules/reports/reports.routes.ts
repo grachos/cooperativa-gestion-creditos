@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { pool } from "../../db/pool.js";
 import { requireAuth } from "../../middlewares/auth.middleware.js";
-import { asyncHandler } from "../../middlewares/error.middleware.js";
+import { asyncHandler, HttpError } from "../../middlewares/error.middleware.js";
 import { MORA_BUCKETS, getMoraBucket } from "../delinquency/delinquency.service.js";
 
 export const reportsRouter = Router();
@@ -214,6 +214,154 @@ reportsRouter.get(
         installmentsPaidPercent: installmentsDueCount > 0 ? (installmentsPaidCount / installmentsDueCount) * 100 : 0,
         collectedAmount,
         collectedPercent: dueAmount > 0 ? (collectedAmount / dueAmount) * 100 : 0
+      };
+    });
+
+    res.json({ data });
+  })
+);
+
+/**
+ * Detalle mensual por crédito, hallazgo directo de la hoja mensual real de
+ * la cooperativa (una fila por crédito abierto ese mes: día de pago, valor
+ * del crédito, valor de la cuota, cuotas pagas/pendientes, valor pagado/
+ * pendiente, recaudo del mes, capital/interés por recaudar y recaudado).
+ * A diferencia de la mora (que no tiene historial), esto SÍ se puede
+ * reconstruir con exactitud histórica porque `payment_allocations` guarda
+ * cada abono por concepto, con la fecha del pago (`payments.received_date`):
+ * sumando solo los abonos con fecha <= fin de mes se obtiene el estado real
+ * del crédito en ese corte, no el estado actual.
+ * "Créditos cancelados antes/durante el mes" usa la misma aproximación que
+ * el reporte mensual agregado (`status='PAGADO'` + `updated_at`), documentada
+ * ahí, por no existir historial de estados de crédito.
+ */
+reportsRouter.get(
+  "/credits-monthly-detail",
+  asyncHandler(async (req, res) => {
+    const year = Number(req.query.year);
+    const month = Number(req.query.month);
+    if (!year || !month || month < 1 || month > 12) {
+      throw new HttpError(400, "year y month son requeridos (month entre 1 y 12)");
+    }
+    const monthStart = `${year}-${String(month).padStart(2, "0")}-01`;
+
+    const [rows] = await pool.query<any[]>(
+      `WITH bounds AS (
+         SELECT ?::date AS month_start,
+                (?::date + INTERVAL '1 month' - INTERVAL '1 day')::date AS month_end
+       ),
+       open_credits AS (
+         SELECT c.id, c.credit_number, c.disbursed_amount, c.term_value,
+                c.first_installment_date, c.titular_associate_id, c.titular_society_id
+         FROM credits c, bounds b
+         WHERE c.disbursement_date <= b.month_end
+           AND NOT (c.status = 'PAGADO' AND c.updated_at::date <= b.month_start - INTERVAL '1 day')
+       ),
+       schedule_totals AS (
+         SELECT credit_id,
+                COUNT(*) AS n_installments,
+                SUM(principal_due) AS total_principal,
+                SUM(interest_due) AS total_interest,
+                SUM(total_due) AS total_due,
+                MIN(total_due) FILTER (WHERE installment_number = 1) AS installment_value
+         FROM credit_schedule_installments
+         WHERE status != 'ANULADA'
+         GROUP BY credit_id
+       ),
+       per_installment_paid AS (
+         SELECT csi.id, csi.credit_id, csi.total_due,
+                COALESCE(SUM(pa.amount) FILTER (
+                  WHERE pa.concept IN ('CAPITAL','INTERES') AND p.status = 'CONFIRMADO' AND p.received_date <= (SELECT month_end FROM bounds)
+                ), 0) AS paid_to_date,
+                (csi.due_date <= (SELECT month_end FROM bounds)) AS was_due
+         FROM credit_schedule_installments csi
+         LEFT JOIN payment_allocations pa ON pa.installment_id = csi.id
+         LEFT JOIN payments p ON p.id = pa.payment_id
+         WHERE csi.status != 'ANULADA'
+         GROUP BY csi.id, csi.credit_id, csi.total_due, csi.due_date
+       ),
+       installments_agg AS (
+         SELECT credit_id,
+                COUNT(*) FILTER (WHERE paid_to_date >= total_due - 0.01) AS installments_paid,
+                COUNT(*) FILTER (WHERE was_due AND paid_to_date < total_due - 0.01) AS installments_overdue
+         FROM per_installment_paid
+         GROUP BY credit_id
+       ),
+       paid_to_date AS (
+         SELECT csi.credit_id,
+                COALESCE(SUM(pa.amount) FILTER (WHERE pa.concept = 'CAPITAL'), 0) AS capital_paid_to_date,
+                COALESCE(SUM(pa.amount) FILTER (WHERE pa.concept = 'INTERES'), 0) AS interest_paid_to_date
+         FROM credit_schedule_installments csi
+         JOIN payment_allocations pa ON pa.installment_id = csi.id
+         JOIN payments p ON p.id = pa.payment_id AND p.status = 'CONFIRMADO'
+         WHERE p.received_date <= (SELECT month_end FROM bounds)
+         GROUP BY csi.credit_id
+       ),
+       collected_this_month AS (
+         SELECT csi.credit_id,
+                COALESCE(SUM(pa.amount) FILTER (WHERE pa.concept = 'CAPITAL'), 0) AS capital_collected_month,
+                COALESCE(SUM(pa.amount) FILTER (WHERE pa.concept = 'INTERES'), 0) AS interest_collected_month,
+                COALESCE(SUM(pa.amount), 0) AS total_collected_month
+         FROM credit_schedule_installments csi
+         JOIN payment_allocations pa ON pa.installment_id = csi.id
+         JOIN payments p ON p.id = pa.payment_id AND p.status = 'CONFIRMADO'
+         WHERE p.received_date BETWEEN (SELECT month_start FROM bounds) AND (SELECT month_end FROM bounds)
+         GROUP BY csi.credit_id
+       )
+       SELECT
+         oc.credit_number,
+         COALESCE(a.first_name || ' ' || a.last_name, s.legal_name) AS client_name,
+         EXTRACT(DAY FROM oc.first_installment_date) AS payment_day,
+         oc.disbursed_amount,
+         st.installment_value,
+         st.n_installments,
+         COALESCE(ia.installments_paid, 0) AS installments_paid,
+         st.n_installments - COALESCE(ia.installments_paid, 0) AS installments_pending,
+         COALESCE(ia.installments_overdue, 0) AS installments_overdue,
+         COALESCE(ptd.capital_paid_to_date, 0) + COALESCE(ptd.interest_paid_to_date, 0) AS paid_to_date,
+         st.total_due - (COALESCE(ptd.capital_paid_to_date, 0) + COALESCE(ptd.interest_paid_to_date, 0)) AS pending_to_date,
+         COALESCE(ctm.total_collected_month, 0) AS collected_month,
+         st.total_principal - COALESCE(ptd.capital_paid_to_date, 0) AS principal_to_collect,
+         st.total_interest - COALESCE(ptd.interest_paid_to_date, 0) AS interest_to_collect,
+         COALESCE(ctm.capital_collected_month, 0) AS principal_collected_month,
+         COALESCE(ctm.interest_collected_month, 0) AS interest_collected_month
+       FROM open_credits oc
+       JOIN schedule_totals st ON st.credit_id = oc.id
+       LEFT JOIN installments_agg ia ON ia.credit_id = oc.id
+       LEFT JOIN paid_to_date ptd ON ptd.credit_id = oc.id
+       LEFT JOIN collected_this_month ctm ON ctm.credit_id = oc.id
+       LEFT JOIN associates a ON a.id = oc.titular_associate_id
+       LEFT JOIN societies s ON s.id = oc.titular_society_id
+       ORDER BY oc.credit_number ASC`,
+      [monthStart, monthStart]
+    );
+
+    const data = (rows as any[]).map((r) => {
+      const installmentsPaid = Number(r.installments_paid);
+      const nInstallments = Number(r.n_installments);
+      const status =
+        installmentsPaid >= nInstallments
+          ? "PAGADO"
+          : Number(r.installments_overdue) > 0
+            ? "EN_MORA"
+            : "VIGENTE";
+      return {
+        creditNumber: r.credit_number,
+        clientName: r.client_name ?? "—",
+        paymentDay: Number(r.payment_day),
+        status,
+        creditValue: Number(r.disbursed_amount),
+        installmentValue: Number(r.installment_value),
+        installmentsCount: nInstallments,
+        installmentsPaid,
+        installmentsPending: Number(r.installments_pending),
+        paidToDate: Number(r.paid_to_date),
+        pendingToDate: Number(r.pending_to_date),
+        collectedMonth: Number(r.collected_month),
+        principalToCollect: Number(r.principal_to_collect),
+        interestToCollect: Number(r.interest_to_collect),
+        principalCollectedMonth: Number(r.principal_collected_month),
+        interestCollectedMonth: Number(r.interest_collected_month)
       };
     });
 

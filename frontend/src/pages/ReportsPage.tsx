@@ -60,10 +60,32 @@ interface MoraBucket {
   value: number;
 }
 
+interface CreditMonthlyDetailRow {
+  creditNumber: string;
+  clientName: string;
+  paymentDay: number;
+  status: string;
+  creditValue: number;
+  installmentValue: number;
+  installmentsCount: number;
+  installmentsPaid: number;
+  installmentsPending: number;
+  paidToDate: number;
+  pendingToDate: number;
+  collectedMonth: number;
+  principalToCollect: number;
+  interestToCollect: number;
+  principalCollectedMonth: number;
+  interestCollectedMonth: number;
+}
+
 export default function ReportsPage() {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [year, setYear] = useState<string>("");
   const [month, setMonth] = useState<string>("");
+  const today = new Date();
+  const [detailYear, setDetailYear] = useState<string>(String(today.getFullYear()));
+  const [detailMonth, setDetailMonth] = useState<string>(String(today.getMonth() + 1));
 
   const dueQuery = useQuery({
     queryKey: ["report-due", date],
@@ -100,6 +122,44 @@ export default function ReportsPage() {
     years.add(currentYear);
     return Array.from(years).sort((a, b) => b - a);
   }, [allMonthsQuery.data]);
+
+  const detailQuery = useQuery({
+    queryKey: ["report-credits-monthly-detail", detailYear, detailMonth],
+    queryFn: () =>
+      api.get<{ data: CreditMonthlyDetailRow[] }>(
+        `/reports/credits-monthly-detail?year=${detailYear}&month=${detailMonth}`
+      )
+  });
+
+  const detailTotals = useMemo(() => {
+    const rows = detailQuery.data?.data ?? [];
+    return rows.reduce(
+      (acc, r) => ({
+        creditValue: acc.creditValue + r.creditValue,
+        installmentsPaid: acc.installmentsPaid + r.installmentsPaid,
+        installmentsPending: acc.installmentsPending + r.installmentsPending,
+        paidToDate: acc.paidToDate + r.paidToDate,
+        pendingToDate: acc.pendingToDate + r.pendingToDate,
+        collectedMonth: acc.collectedMonth + r.collectedMonth,
+        principalToCollect: acc.principalToCollect + r.principalToCollect,
+        interestToCollect: acc.interestToCollect + r.interestToCollect,
+        principalCollectedMonth: acc.principalCollectedMonth + r.principalCollectedMonth,
+        interestCollectedMonth: acc.interestCollectedMonth + r.interestCollectedMonth
+      }),
+      {
+        creditValue: 0,
+        installmentsPaid: 0,
+        installmentsPending: 0,
+        paidToDate: 0,
+        pendingToDate: 0,
+        collectedMonth: 0,
+        principalToCollect: 0,
+        interestToCollect: 0,
+        principalCollectedMonth: 0,
+        interestCollectedMonth: 0
+      }
+    );
+  }, [detailQuery.data]);
 
   const totals = useMemo(() => {
     const rows = monthlyQuery.data?.data ?? [];
@@ -233,6 +293,126 @@ export default function ReportsPage() {
                   <td className="py-1 pr-3">
                     {formatPercent(totals.dueAmount > 0 ? (totals.collectedAmount / totals.dueAmount) * 100 : 0)}
                   </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-700">Detalle mensual por crédito</h2>
+            <p className="text-xs text-slate-400">
+              Una fila por crédito abierto ese mes: día de pago, cuotas pagas/pendientes, valor pagado/pendiente
+              acumulado y recaudo del mes — reconstruido con los abonos reales registrados hasta el cierre de ese
+              mes, no con el estado actual.
+            </p>
+          </div>
+          <div className="flex shrink-0 gap-2">
+            <select
+              className="rounded-md border border-slate-300 px-2 py-1 text-sm"
+              value={detailYear}
+              onChange={(e) => setDetailYear(e.target.value)}
+            >
+              {availableYears.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
+            <select
+              className="rounded-md border border-slate-300 px-2 py-1 text-sm"
+              value={detailMonth}
+              onChange={(e) => setDetailMonth(e.target.value)}
+            >
+              {MONTH_NAMES.map((name, i) => (
+                <option key={name} value={i + 1}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        {detailQuery.isLoading && <Loading />}
+        {detailQuery.error && <ErrorView message={(detailQuery.error as Error).message} />}
+        {detailQuery.data && detailQuery.data.data.length === 0 && (
+          <EmptyView message="Ningún crédito estaba abierto en el mes seleccionado." />
+        )}
+        {detailQuery.data && detailQuery.data.data.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1100px] text-sm">
+              <thead className="text-left text-xs uppercase text-slate-400">
+                <tr>
+                  <th className="py-1 pr-3">Crédito</th>
+                  <th className="py-1 pr-3">Cliente</th>
+                  <th className="py-1 pr-3">Día pago</th>
+                  <th className="py-1 pr-3">Estado</th>
+                  <th className="py-1 pr-3">Valor crédito</th>
+                  <th className="py-1 pr-3">Valor cuota</th>
+                  <th className="py-1 pr-3">Cuotas pagas</th>
+                  <th className="py-1 pr-3">Cuotas pend.</th>
+                  <th className="py-1 pr-3">Valor pagado</th>
+                  <th className="py-1 pr-3">Valor pendiente</th>
+                  <th className="py-1 pr-3">Recaudo del mes</th>
+                  <th className="py-1 pr-3">Capital x recaudar</th>
+                  <th className="py-1 pr-3">Interés x recaudar</th>
+                  <th className="py-1 pr-3">Capital recaudado</th>
+                  <th className="py-1 pr-3">Interés recaudado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {detailQuery.data.data.map((r) => (
+                  <tr key={r.creditNumber} className="border-t border-slate-100">
+                    <td className="py-1 pr-3">{r.creditNumber}</td>
+                    <td className="py-1 pr-3">{r.clientName}</td>
+                    <td className="py-1 pr-3">{r.paymentDay}</td>
+                    <td className="py-1 pr-3">
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs ${
+                          r.status === "PAGADO"
+                            ? "bg-emerald-50 text-emerald-700"
+                            : r.status === "EN_MORA"
+                              ? "bg-red-50 text-red-700"
+                              : "bg-slate-100 text-slate-500"
+                        }`}
+                      >
+                        {r.status}
+                      </span>
+                    </td>
+                    <td className="py-1 pr-3">{formatCurrency(r.creditValue)}</td>
+                    <td className="py-1 pr-3">{formatCurrency(r.installmentValue)}</td>
+                    <td className="py-1 pr-3">
+                      {r.installmentsPaid}/{r.installmentsCount}
+                    </td>
+                    <td className="py-1 pr-3">{r.installmentsPending}</td>
+                    <td className="py-1 pr-3">{formatCurrency(r.paidToDate)}</td>
+                    <td className="py-1 pr-3">{formatCurrency(r.pendingToDate)}</td>
+                    <td className="py-1 pr-3">{formatCurrency(r.collectedMonth)}</td>
+                    <td className="py-1 pr-3">{formatCurrency(r.principalToCollect)}</td>
+                    <td className="py-1 pr-3">{formatCurrency(r.interestToCollect)}</td>
+                    <td className="py-1 pr-3">{formatCurrency(r.principalCollectedMonth)}</td>
+                    <td className="py-1 pr-3">{formatCurrency(r.interestCollectedMonth)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-slate-200 font-semibold text-slate-700">
+                  <td className="py-1 pr-3" colSpan={4}>
+                    Total
+                  </td>
+                  <td className="py-1 pr-3">{formatCurrency(detailTotals.creditValue)}</td>
+                  <td className="py-1 pr-3">—</td>
+                  <td className="py-1 pr-3">{detailTotals.installmentsPaid}</td>
+                  <td className="py-1 pr-3">{detailTotals.installmentsPending}</td>
+                  <td className="py-1 pr-3">{formatCurrency(detailTotals.paidToDate)}</td>
+                  <td className="py-1 pr-3">{formatCurrency(detailTotals.pendingToDate)}</td>
+                  <td className="py-1 pr-3">{formatCurrency(detailTotals.collectedMonth)}</td>
+                  <td className="py-1 pr-3">{formatCurrency(detailTotals.principalToCollect)}</td>
+                  <td className="py-1 pr-3">{formatCurrency(detailTotals.interestToCollect)}</td>
+                  <td className="py-1 pr-3">{formatCurrency(detailTotals.principalCollectedMonth)}</td>
+                  <td className="py-1 pr-3">{formatCurrency(detailTotals.interestCollectedMonth)}</td>
                 </tr>
               </tfoot>
             </table>
