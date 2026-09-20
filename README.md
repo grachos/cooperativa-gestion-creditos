@@ -70,18 +70,23 @@ con Vite.
 - **Gestor de cartera y vendedor asignados por crédito** (`assigned_collector_id`,
   `assigned_seller_id`), también tomado del Excel real ("GESTOR A CARGO",
   "VENDEDOR").
-- **Interés por cambio de fecha en la primera cuota, calculado automáticamente**:
-  hallazgo del Excel real — cuando entre el desembolso y la primera fecha de
-  pago pasan más de ~30 días (ciclo mensual estándar), la cooperativa
-  prorratea el interés de esos días extra y lo suma a la primera cuota.
-  Verificado en 3 créditos reales (p. ej. cuota normal $391.800 → primera
-  cuota $421.800, diferencia exacta $30.000 con 37 días entre desembolso y
-  primer pago). Antes se modelaba solo como ajuste manual; ahora
-  `schedule.service.ts` lo calcula al generar el cronograma.
-- **Ajustes manuales auditables** (`credit_adjustments`): descuentos
-  autorizados, gastos de notificación — en el Excel original eran columnas
-  sueltas sin trazabilidad de quién autorizaba; aquí quedan como movimientos
-  con aprobador obligatorio.
+- **Ajustes manuales auditables** (`credit_adjustments`): interés por cambio
+  de fecha, descuentos autorizados, gastos de notificación — en el Excel
+  original eran columnas sueltas sin trazabilidad de quién autorizaba; aquí
+  quedan como movimientos con aprobador obligatorio
+  (`POST /credits/:id/adjustments`). Se investigó a fondo si "interés por
+  cambio de fecha" sigue una fórmula de prorrateo automática (cuando el
+  desembolso y la primera fecha de pago quedan a más de ~30 días): se
+  confirmó el patrón en 3 créditos reales (p. ej. cuota normal $391.800 →
+  primera cuota $421.800, diferencia $30.000, 37 días entre desembolso y
+  primer pago), pero **ninguna fórmula de prorrateo probada** (interés
+  mensual/30 × días extra, capital×tasa/30 × días extra, con distintas
+  definiciones de "días extra") reproduce los tres valores reales
+  ($30.000 / $22.400 / $31.000) de forma consistente — el patrón día-a-monto
+  no cuadra con una tasa diaria fija entre créditos. Todo indica que es un
+  valor definido a criterio del operador al desembolsar, no una fórmula de
+  sistema, así que se mantiene como ajuste manual (ya soportado) en vez de
+  cablear una fórmula adivinada al cronograma.
 - **Crédito fondeado por un tercero ("tomador")** (`funder_name`,
   `funder_rate_percent` en `credits`): hallazgo del Excel real — 16 meses
   consecutivos muestran "Interés del 4% de los créditos abiertos" (tasa al
@@ -295,10 +300,10 @@ confirmarse antes de producción:
   puede activar si la cooperativa confirma que sí quiere cobrarlo hacia
   adelante.
 - Alerta temprana: 3 días antes del vencimiento.
-- Interés por cambio de fecha (primera cuota): se prorratea sobre el interés
-  mensual estándar del crédito cuando el desembolso y el primer pago quedan
-  a más de 30 días; regla inferida de solo 3 créditos de ejemplo, confirmar
-  la fórmula exacta y el umbral de días con la cooperativa.
+- Interés por cambio de fecha (primera cuota): confirmado que el patrón es
+  real, pero no se encontró fórmula de prorrateo que reproduzca los 3
+  valores de ejemplo — queda como ajuste manual; pendiente preguntarle
+  directamente al operador/contadora cómo lo calculan.
 - Tasa del tomador / margen de la cooperativa: modelado como campo por
   crédito (`funder_rate_percent`), no hay validación de que la diferencia
   siempre deba ser exactamente 2,1 puntos porcentuales para créditos futuros.

@@ -24,47 +24,18 @@ export interface ScheduleRow {
  * con interés decreciente), que no coincide con cómo la cooperativa
  * calcula sus créditos hoy.
  */
-const STANDARD_CYCLE_DAYS = 30;
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
-
-/**
- * Interés por cambio de fecha (primera cuota): hallazgo del Excel real —
- * cuando entre el desembolso y la primera fecha de pago pasan más de los
- * ~30 días de un ciclo mensual estándar, la cooperativa prorratea el
- * interés de esos días extra y lo suma a la primera cuota (verificado en 3
- * créditos reales: p.ej. cuota normal $391.800 → primera cuota $421.800,
- * diferencia exacta $30.000 con un desembolso 37 días antes del primer
- * pago). Se prorratea sobre el interés mensual "estándar" del crédito.
- */
-function calcFirstInstallmentDateChangeInterest(
-  interestPerInstallment: number,
-  disbursementDate: Date,
-  firstInstallmentDate: Date
-): number {
-  const gapDays = Math.round((firstInstallmentDate.getTime() - disbursementDate.getTime()) / MS_PER_DAY);
-  const extraDays = gapDays - STANDARD_CYCLE_DAYS;
-  if (extraDays <= 0) return 0;
-  return round2((interestPerInstallment / STANDARD_CYCLE_DAYS) * extraDays);
-}
-
 export function buildAmortizationSchedule(params: {
   principal: number;
   monthlyRatePercent: number;
   termMonths: number;
-  disbursementDate: Date;
   firstInstallmentDate: Date;
 }): ScheduleRow[] {
-  const { principal, monthlyRatePercent, termMonths, disbursementDate, firstInstallmentDate } = params;
+  const { principal, monthlyRatePercent, termMonths, firstInstallmentDate } = params;
   const n = termMonths;
 
   const principalPerInstallment = round2(principal / n);
   const totalInterest = round2(principal * (monthlyRatePercent / 100) * n);
   const interestPerInstallment = round2(totalInterest / n);
-  const dateChangeInterest = calcFirstInstallmentDateChangeInterest(
-    interestPerInstallment,
-    disbursementDate,
-    firstInstallmentDate
-  );
 
   let principalRemaining = principal;
   let interestRemaining = totalInterest;
@@ -80,10 +51,6 @@ export function buildAmortizationSchedule(params: {
     }
     principalRemaining = round2(principalRemaining - principalDue);
     interestRemaining = round2(interestRemaining - interestDue);
-
-    if (k === 1 && dateChangeInterest > 0) {
-      interestDue = round2(interestDue + dateChangeInterest);
-    }
 
     const dueDate = new Date(firstInstallmentDate);
     dueDate.setMonth(dueDate.getMonth() + (k - 1));

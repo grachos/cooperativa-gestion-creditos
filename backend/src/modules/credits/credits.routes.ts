@@ -75,7 +75,6 @@ creditsRouter.post(
         principal: Number(app.requested_amount),
         monthlyRatePercent: Number(app.interest_rate),
         termMonths: app.term_value,
-        disbursementDate: new Date(disbursementDate),
         firstInstallmentDate: new Date(firstInstallmentDate)
       });
 
@@ -302,7 +301,6 @@ creditsRouter.post(
           principal: newPrincipal,
           monthlyRatePercent: interestRate,
           termMonths: termValue,
-          disbursementDate: new Date(refinanceDisbursementDate),
           firstInstallmentDate: new Date(firstInstallmentDate)
         });
         for (const row of schedule) {
