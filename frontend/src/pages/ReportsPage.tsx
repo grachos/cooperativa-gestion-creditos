@@ -86,6 +86,7 @@ export default function ReportsPage() {
   const today = new Date();
   const [detailYear, setDetailYear] = useState<string>(String(today.getFullYear()));
   const [detailMonth, setDetailMonth] = useState<string>(String(today.getMonth() + 1));
+  const [detailClientFilter, setDetailClientFilter] = useState("");
 
   const dueQuery = useQuery({
     queryKey: ["report-due", date],
@@ -131,8 +132,17 @@ export default function ReportsPage() {
       )
   });
 
-  const detailTotals = useMemo(() => {
+  const filteredDetailRows = useMemo(() => {
     const rows = detailQuery.data?.data ?? [];
+    const q = detailClientFilter.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter(
+      (r) => r.clientName.toLowerCase().includes(q) || r.creditNumber.toLowerCase().includes(q)
+    );
+  }, [detailQuery.data, detailClientFilter]);
+
+  const detailTotals = useMemo(() => {
+    const rows = filteredDetailRows;
     return rows.reduce(
       (acc, r) => ({
         creditValue: acc.creditValue + r.creditValue,
@@ -159,7 +169,56 @@ export default function ReportsPage() {
         interestCollectedMonth: 0
       }
     );
-  }, [detailQuery.data]);
+  }, [filteredDetailRows]);
+
+  function downloadDetailCsv() {
+    const header = [
+      "Credito",
+      "Cliente",
+      "Dia pago",
+      "Estado",
+      "Valor credito",
+      "Valor cuota",
+      "Cuotas pagas",
+      "Cuotas totales",
+      "Cuotas pendientes",
+      "Valor pagado",
+      "Valor pendiente",
+      "Recaudo del mes",
+      "Capital x recaudar",
+      "Interes x recaudar",
+      "Capital recaudado",
+      "Interes recaudado"
+    ];
+    const rows = filteredDetailRows.map((r) => [
+      r.creditNumber,
+      r.clientName,
+      r.paymentDay,
+      r.status,
+      r.creditValue,
+      r.installmentValue,
+      r.installmentsPaid,
+      r.installmentsCount,
+      r.installmentsPending,
+      r.paidToDate,
+      r.pendingToDate,
+      r.collectedMonth,
+      r.principalToCollect,
+      r.interestToCollect,
+      r.principalCollectedMonth,
+      r.interestCollectedMonth
+    ]);
+    const csv = [header, ...rows]
+      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `detalle-mensual-${detailYear}-${String(detailMonth).padStart(2, "0")}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
 
   const totals = useMemo(() => {
     const rows = monthlyQuery.data?.data ?? [];
@@ -310,7 +369,13 @@ export default function ReportsPage() {
               mes, no con el estado actual.
             </p>
           </div>
-          <div className="flex shrink-0 gap-2">
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <input
+              className="w-40 rounded-md border border-slate-300 px-2 py-1 text-sm"
+              placeholder="Buscar cliente o crédito"
+              value={detailClientFilter}
+              onChange={(e) => setDetailClientFilter(e.target.value)}
+            />
             <select
               className="rounded-md border border-slate-300 px-2 py-1 text-sm"
               value={detailYear}
@@ -333,14 +398,28 @@ export default function ReportsPage() {
                 </option>
               ))}
             </select>
+            <button
+              type="button"
+              onClick={downloadDetailCsv}
+              disabled={filteredDetailRows.length === 0}
+              className="rounded-md border border-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+            >
+              Exportar CSV
+            </button>
           </div>
         </div>
         {detailQuery.isLoading && <Loading />}
         {detailQuery.error && <ErrorView message={(detailQuery.error as Error).message} />}
-        {detailQuery.data && detailQuery.data.data.length === 0 && (
-          <EmptyView message="Ningún crédito estaba abierto en el mes seleccionado." />
+        {detailQuery.data && filteredDetailRows.length === 0 && (
+          <EmptyView
+            message={
+              detailClientFilter
+                ? "Ningún crédito coincide con la búsqueda."
+                : "Ningún crédito estaba abierto en el mes seleccionado."
+            }
+          />
         )}
-        {detailQuery.data && detailQuery.data.data.length > 0 && (
+        {detailQuery.data && filteredDetailRows.length > 0 && (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1100px] text-sm">
               <thead className="text-left text-xs uppercase text-slate-400">
@@ -363,7 +442,7 @@ export default function ReportsPage() {
                 </tr>
               </thead>
               <tbody>
-                {detailQuery.data.data.map((r) => (
+                {filteredDetailRows.map((r) => (
                   <tr key={r.creditNumber} className="border-t border-slate-100">
                     <td className="py-1 pr-3">{r.creditNumber}</td>
                     <td className="py-1 pr-3">{r.clientName}</td>
