@@ -10,9 +10,109 @@ interface UserRow {
   email: string;
 }
 
+interface ManagedUser {
+  id: number;
+  full_name: string;
+  email: string;
+  username: string;
+  status: "ACTIVO" | "INACTIVO";
+  role_codes: string[];
+}
+
 interface Role {
   code: string;
   name: string;
+}
+
+function EditUserRow({ user, roles }: { user: ManagedUser; roles: Role[] }) {
+  const queryClient = useQueryClient();
+  const [roleCodes, setRoleCodes] = useState(user.role_codes);
+  const [newPassword, setNewPassword] = useState("");
+  const [rowError, setRowError] = useState<string | null>(null);
+
+  function invalidate() {
+    void queryClient.invalidateQueries({ queryKey: ["users"] });
+  }
+
+  const patchUser = useMutation({
+    mutationFn: (body: Record<string, unknown>) => api.patch(`/users/${user.id}`, body),
+    onSuccess: () => {
+      setRowError(null);
+      invalidate();
+    },
+    onError: (err) => setRowError(err instanceof Error ? err.message : "Error al actualizar el usuario")
+  });
+
+  function toggleRole(code: string) {
+    setRoleCodes((prev) => (prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]));
+  }
+
+  return (
+    <div className="rounded-lg border border-slate-200 p-3">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-medium text-slate-700">{user.full_name}</p>
+          <p className="text-xs text-slate-400">
+            {user.email} · {user.username}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => patchUser.mutate({ status: user.status === "ACTIVO" ? "INACTIVO" : "ACTIVO" })}
+          className={`shrink-0 rounded-md px-3 py-1 text-xs font-medium ${
+            user.status === "ACTIVO"
+              ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+              : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+          }`}
+        >
+          {user.status === "ACTIVO" ? "Activo" : "Inactivo"}
+        </button>
+      </div>
+
+      {rowError && <p className="mb-2 rounded-md bg-red-50 p-2 text-xs text-red-700">{rowError}</p>}
+
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap gap-2">
+          {roles.map((r) => (
+            <label key={r.code} className="flex items-center gap-1 text-xs text-slate-600">
+              <input type="checkbox" checked={roleCodes.includes(r.code)} onChange={() => toggleRole(r.code)} />
+              {r.name}
+            </label>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={() => patchUser.mutate({ roleCodes })}
+          disabled={patchUser.isPending}
+          className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+        >
+          Guardar roles
+        </button>
+      </div>
+
+      <div className="mt-2 flex items-center gap-2">
+        <input
+          type="password"
+          placeholder="Nueva contraseña (mínimo 8)"
+          minLength={8}
+          value={newPassword}
+          onChange={(e) => setNewPassword(e.target.value)}
+          className="w-56 rounded-md border border-slate-300 px-2 py-1 text-xs"
+        />
+        <button
+          type="button"
+          disabled={newPassword.length < 8 || patchUser.isPending}
+          onClick={() => {
+            patchUser.mutate({ password: newPassword });
+            setNewPassword("");
+          }}
+          className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+        >
+          Restablecer contraseña
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export default function UsersPage() {
@@ -22,7 +122,13 @@ export default function UsersPage() {
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["users"],
-    queryFn: () => api.get<{ data: UserRow[] }>("/users")
+    queryFn: () => api.get<{ data: UserRow[] }>("/users"),
+    enabled: !canWrite
+  });
+  const { data: managed, isLoading: isLoadingManaged, error: managedError } = useQuery({
+    queryKey: ["users", "manage"],
+    queryFn: () => api.get<{ data: ManagedUser[] }>("/users/manage"),
+    enabled: canWrite
   });
   const { data: roles } = useQuery({
     queryKey: ["users", "roles"],
@@ -43,7 +149,7 @@ export default function UsersPage() {
     onError: (err) => setFormError(err instanceof Error ? err.message : "Error al crear el usuario")
   });
 
-  function toggleRole(code: string) {
+  function toggleFormRole(code: string) {
     setForm((f) => ({
       ...f,
       roleCodes: f.roleCodes.includes(code) ? f.roleCodes.filter((c) => c !== code) : [...f.roleCodes, code]
@@ -55,8 +161,8 @@ export default function UsersPage() {
     createUser.mutate();
   }
 
-  if (isLoading) return <Loading />;
-  if (error) return <ErrorView message={(error as Error).message} />;
+  if (isLoading || isLoadingManaged) return <Loading />;
+  if (error || managedError) return <ErrorView message={((error ?? managedError) as Error).message} />;
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -69,14 +175,24 @@ export default function UsersPage() {
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <p className="mb-2 text-sm font-semibold text-slate-700">Usuarios activos</p>
-        <ul className="divide-y divide-slate-100">
-          {data?.data.map((u) => (
-            <li key={u.id} className="py-2 text-sm text-slate-600">
-              {u.full_name} <span className="text-slate-400">— {u.email}</span>
-            </li>
-          ))}
-        </ul>
+        <p className="mb-2 text-sm font-semibold text-slate-700">
+          {canWrite ? "Usuarios (activar/desactivar, roles, contraseña)" : "Usuarios activos"}
+        </p>
+        {canWrite ? (
+          <div className="space-y-2">
+            {managed?.data.map((u) => (
+              <EditUserRow key={u.id} user={u} roles={roles?.data ?? []} />
+            ))}
+          </div>
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {data?.data.map((u) => (
+              <li key={u.id} className="py-2 text-sm text-slate-600">
+                {u.full_name} <span className="text-slate-400">— {u.email}</span>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       {canWrite && (
@@ -138,7 +254,7 @@ export default function UsersPage() {
                   <input
                     type="checkbox"
                     checked={form.roleCodes.includes(r.code)}
-                    onChange={() => toggleRole(r.code)}
+                    onChange={() => toggleFormRole(r.code)}
                   />
                   {r.name}
                 </label>
