@@ -137,6 +137,13 @@ reportsRouter.get(
   "/monthly-summary",
   asyncHandler(async (req, res) => {
     const year = req.query.year ? Number(req.query.year) : null;
+    const month = req.query.month ? Number(req.query.month) : null;
+
+    const conditions: string[] = [];
+    if (year) conditions.push("EXTRACT(YEAR FROM m.month) = ?");
+    if (month) conditions.push("EXTRACT(MONTH FROM m.month) = ?");
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const args = [year, month].filter((v): v is number => v !== null);
 
     const [rows] = await pool.query<any[]>(
       `WITH disb AS (
@@ -184,9 +191,9 @@ reportsRouter.get(
        LEFT JOIN cancel ON cancel.month = m.month
        LEFT JOIN due ON due.month = m.month
        LEFT JOIN recaudo ON recaudo.month = m.month
-       ${year ? "WHERE EXTRACT(YEAR FROM m.month) = ?" : ""}
+       ${where}
        ORDER BY m.month ASC`,
-      year ? [year] : []
+      args
     );
 
     const data = (rows as any[]).map((r) => {

@@ -63,6 +63,7 @@ interface MoraBucket {
 export default function ReportsPage() {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [year, setYear] = useState<string>("");
+  const [month, setMonth] = useState<string>("");
 
   const dueQuery = useQuery({
     queryKey: ["report-due", date],
@@ -76,16 +77,29 @@ export default function ReportsPage() {
     queryKey: ["report-mora-buckets"],
     queryFn: () => api.get<{ data: MoraBucket[] }>("/reports/mora-buckets")
   });
+  // Sin filtros, solo para poblar el selector de años disponibles — así el
+  // selector no se reduce a la sola opción elegida al filtrar la tabla.
+  const allMonthsQuery = useQuery({
+    queryKey: ["report-monthly-summary", "all"],
+    queryFn: () => api.get<{ data: MonthlySummaryRow[] }>("/reports/monthly-summary")
+  });
   const monthlyQuery = useQuery({
-    queryKey: ["report-monthly-summary", year],
-    queryFn: () =>
-      api.get<{ data: MonthlySummaryRow[] }>(`/reports/monthly-summary${year ? `?year=${year}` : ""}`)
+    queryKey: ["report-monthly-summary", year, month],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (year) params.set("year", year);
+      if (month) params.set("month", month);
+      const qs = params.toString();
+      return api.get<{ data: MonthlySummaryRow[] }>(`/reports/monthly-summary${qs ? `?${qs}` : ""}`);
+    }
   });
 
   const availableYears = useMemo(() => {
-    const years = new Set((monthlyQuery.data?.data ?? []).map((r) => r.year));
+    const years = new Set((allMonthsQuery.data?.data ?? []).map((r) => r.year));
+    const currentYear = new Date().getFullYear();
+    years.add(currentYear);
     return Array.from(years).sort((a, b) => b - a);
-  }, [monthlyQuery.data]);
+  }, [allMonthsQuery.data]);
 
   const totals = useMemo(() => {
     const rows = monthlyQuery.data?.data ?? [];
@@ -127,18 +141,32 @@ export default function ReportsPage() {
               abajo para la mora vigente hoy).
             </p>
           </div>
-          <select
-            className="rounded-md border border-slate-300 px-2 py-1 text-sm"
-            value={year}
-            onChange={(e) => setYear(e.target.value)}
-          >
-            <option value="">Todos los años</option>
-            {availableYears.map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
-            ))}
-          </select>
+          <div className="flex shrink-0 gap-2">
+            <select
+              className="rounded-md border border-slate-300 px-2 py-1 text-sm"
+              value={year}
+              onChange={(e) => setYear(e.target.value)}
+            >
+              <option value="">Todos los años</option>
+              {availableYears.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
+            <select
+              className="rounded-md border border-slate-300 px-2 py-1 text-sm"
+              value={month}
+              onChange={(e) => setMonth(e.target.value)}
+            >
+              <option value="">Todos los meses</option>
+              {MONTH_NAMES.map((name, i) => (
+                <option key={name} value={i + 1}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
         {monthlyQuery.isLoading && <Loading />}
         {monthlyQuery.error && <ErrorView message={(monthlyQuery.error as Error).message} />}
