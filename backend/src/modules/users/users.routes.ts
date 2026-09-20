@@ -41,9 +41,18 @@ usersRouter.post(
 
     const userId = await withTransaction(async (conn) => {
       const [result] = await conn.query<any>(
-        `INSERT INTO users (email, username, password_hash, full_name)
-         VALUES (?, ?, ?, ?)`,
-        [data.email, data.username, passwordHash, data.fullName]
+        `INSERT INTO users (email, username, password_hash, full_name, id_type, id_number, phone, address)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          data.email,
+          data.username,
+          passwordHash,
+          data.fullName,
+          data.idType ?? null,
+          data.idNumber ?? null,
+          data.phone ?? null,
+          data.address ?? null
+        ]
       );
       const newUserId = result.insertId;
 
@@ -88,6 +97,7 @@ usersRouter.get(
   asyncHandler(async (_req, res) => {
     const [rows] = await pool.query<any[]>(
       `SELECT u.id, u.full_name, u.email, u.username, u.status,
+              u.id_type, u.id_number, u.phone, u.address,
               COALESCE(
                 (SELECT json_agg(r.code ORDER BY r.code)
                  FROM user_roles ur JOIN roles r ON r.id = ur.role_id
@@ -130,13 +140,32 @@ usersRouter.patch(
           await conn.query(`INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)`, [id, role.id]);
         }
       }
+      if (data.idType !== undefined || data.idNumber !== undefined || data.phone !== undefined || data.address !== undefined) {
+        await conn.query(
+          `UPDATE users SET
+             id_type = COALESCE(?, id_type),
+             id_number = COALESCE(?, id_number),
+             phone = COALESCE(?, phone),
+             address = COALESCE(?, address)
+           WHERE id = ?`,
+          [data.idType ?? null, data.idNumber ?? null, data.phone ?? null, data.address ?? null, id]
+        );
+      }
     });
 
     await recordAudit(pool, {
       entity: "user",
       entityId: id,
       action: "UPDATE",
-      newValue: { status: data.status, roleCodes: data.roleCodes, passwordChanged: Boolean(data.password) },
+      newValue: {
+        status: data.status,
+        roleCodes: data.roleCodes,
+        passwordChanged: Boolean(data.password),
+        idType: data.idType,
+        idNumber: data.idNumber,
+        phone: data.phone,
+        address: data.address
+      },
       userId: req.user!.id,
       ipAddress: req.ip
     });

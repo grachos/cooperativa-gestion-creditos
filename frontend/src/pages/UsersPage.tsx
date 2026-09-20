@@ -17,7 +17,13 @@ interface ManagedUser {
   username: string;
   status: "ACTIVO" | "INACTIVO";
   role_codes: string[];
+  id_type: string | null;
+  id_number: string | null;
+  phone: string | null;
+  address: string | null;
 }
+
+const ID_TYPES = ["CC", "CE", "TI", "PA", "NIT"];
 
 interface Role {
   code: string;
@@ -29,6 +35,12 @@ function EditUserRow({ user, roles }: { user: ManagedUser; roles: Role[] }) {
   const [roleCodes, setRoleCodes] = useState(user.role_codes);
   const [newPassword, setNewPassword] = useState("");
   const [rowError, setRowError] = useState<string | null>(null);
+  const [contact, setContact] = useState({
+    idType: user.id_type ?? "",
+    idNumber: user.id_number ?? "",
+    phone: user.phone ?? "",
+    address: user.address ?? ""
+  });
 
   function invalidate() {
     void queryClient.invalidateQueries({ queryKey: ["users"] });
@@ -90,6 +102,54 @@ function EditUserRow({ user, roles }: { user: ManagedUser; roles: Role[] }) {
         </button>
       </div>
 
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <select
+          className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+          value={contact.idType}
+          onChange={(e) => setContact({ ...contact, idType: e.target.value })}
+        >
+          <option value="">Tipo ID</option>
+          {ID_TYPES.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
+        <input
+          placeholder="Número de identificación"
+          value={contact.idNumber}
+          onChange={(e) => setContact({ ...contact, idNumber: e.target.value })}
+          className="w-40 rounded-md border border-slate-300 px-2 py-1 text-xs"
+        />
+        <input
+          placeholder="Teléfono"
+          value={contact.phone}
+          onChange={(e) => setContact({ ...contact, phone: e.target.value })}
+          className="w-36 rounded-md border border-slate-300 px-2 py-1 text-xs"
+        />
+        <input
+          placeholder="Dirección"
+          value={contact.address}
+          onChange={(e) => setContact({ ...contact, address: e.target.value })}
+          className="w-48 rounded-md border border-slate-300 px-2 py-1 text-xs"
+        />
+        <button
+          type="button"
+          disabled={patchUser.isPending}
+          onClick={() =>
+            patchUser.mutate({
+              idType: contact.idType || undefined,
+              idNumber: contact.idNumber || undefined,
+              phone: contact.phone || undefined,
+              address: contact.address || undefined
+            })
+          }
+          className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+        >
+          Guardar datos
+        </button>
+      </div>
+
       <div className="mt-2 flex items-center gap-2">
         <input
           type="password"
@@ -136,13 +196,40 @@ export default function UsersPage() {
     enabled: canWrite
   });
 
-  const [form, setForm] = useState({ fullName: "", email: "", username: "", password: "", roleCodes: [] as string[] });
+  const [form, setForm] = useState({
+    fullName: "",
+    email: "",
+    username: "",
+    password: "",
+    idType: "",
+    idNumber: "",
+    phone: "",
+    address: "",
+    roleCodes: [] as string[]
+  });
   const [formError, setFormError] = useState<string | null>(null);
 
   const createUser = useMutation({
-    mutationFn: () => api.post("/users", form),
+    mutationFn: () =>
+      api.post("/users", {
+        ...form,
+        idType: form.idType || undefined,
+        idNumber: form.idNumber || undefined,
+        phone: form.phone || undefined,
+        address: form.address || undefined
+      }),
     onSuccess: () => {
-      setForm({ fullName: "", email: "", username: "", password: "", roleCodes: [] });
+      setForm({
+        fullName: "",
+        email: "",
+        username: "",
+        password: "",
+        idType: "",
+        idNumber: "",
+        phone: "",
+        address: "",
+        roleCodes: []
+      });
       setFormError(null);
       void queryClient.invalidateQueries({ queryKey: ["users"] });
     },
@@ -228,6 +315,51 @@ export default function UsersPage() {
                 className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
                 value={form.username}
                 onChange={(e) => setForm({ ...form, username: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">Tipo ID</label>
+              <select
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                value={form.idType}
+                onChange={(e) => setForm({ ...form, idType: e.target.value })}
+              >
+                <option value="">—</option>
+                {ID_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="col-span-2">
+              <label className="mb-1 block text-sm font-medium text-slate-700">Número de identificación</label>
+              <input
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                value={form.idNumber}
+                onChange={(e) => setForm({ ...form, idNumber: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">Teléfono</label>
+              <input
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                value={form.phone}
+                onChange={(e) => setForm({ ...form, phone: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">Dirección</label>
+              <input
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                value={form.address}
+                onChange={(e) => setForm({ ...form, address: e.target.value })}
               />
             </div>
           </div>

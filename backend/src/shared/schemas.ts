@@ -119,11 +119,19 @@ export const createUserSchema = z.object({
   email: z.string().email().max(160),
   username: z.string().min(3).max(80),
   password: z.string().min(8).max(72),
+  idType: z.enum(["CC", "CE", "TI", "PA", "NIT"]).optional().nullable(),
+  idNumber: z.string().max(40).optional().nullable(),
+  phone: z.string().max(40).optional().nullable(),
+  address: z.string().max(255).optional().nullable(),
   roleCodes: z.array(z.string()).optional().default([])
 });
 
 export const updateUserSchema = z.object({
   status: z.enum(["ACTIVO", "INACTIVO"]).optional(),
   roleCodes: z.array(z.string()).optional(),
-  password: z.string().min(8).max(72).optional()
+  password: z.string().min(8).max(72).optional(),
+  idType: z.enum(["CC", "CE", "TI", "PA", "NIT"]).optional().nullable(),
+  idNumber: z.string().max(40).optional().nullable(),
+  phone: z.string().max(40).optional().nullable(),
+  address: z.string().max(255).optional().nullable()
 });
