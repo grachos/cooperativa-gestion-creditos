@@ -310,6 +310,7 @@ reportsRouter.get(
        )
        SELECT
          oc.credit_number,
+         oc.titular_associate_id,
          COALESCE(a.first_name || ' ' || a.last_name, s.legal_name) AS client_name,
          EXTRACT(DAY FROM oc.first_installment_date) AS payment_day,
          oc.disbursed_amount,
@@ -347,6 +348,7 @@ reportsRouter.get(
             : "VIGENTE";
       return {
         creditNumber: r.credit_number,
+        associateId: r.titular_associate_id ?? null,
         clientName: r.client_name ?? "—",
         paymentDay: Number(r.payment_day),
         status,

@@ -1,8 +1,104 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { formatCurrency, formatDate, formatPercent } from "../lib/format";
 import { Loading, ErrorView, EmptyView } from "../components/StateViews";
+
+function downloadCsv(filename: string, header: string[], rows: (string | number)[][]) {
+  const csv = [header, ...rows]
+    .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+    .join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+interface AssociateOption {
+  id: number;
+  first_name: string;
+  last_name: string;
+}
+
+/**
+ * Autocompletado de cliente: busca en /associates (asociados con crédito o
+ * no) a medida que se escribe, con un pequeño debounce, y permite elegir
+ * uno exacto en vez de depender de un filtro de texto local.
+ */
+function ClientAutocomplete({
+  onSelect,
+  onClear
+}: {
+  onSelect: (associate: { id: number; name: string }) => void;
+  onClear: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(query), 250);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  useEffect(() => {
+    function onClickOutside(e: MouseEvent) {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, []);
+
+  const searchQuery = useQuery({
+    queryKey: ["associates-autocomplete", debouncedQuery],
+    queryFn: () =>
+      api.get<{ data: AssociateOption[] }>(`/associates?search=${encodeURIComponent(debouncedQuery)}&pageSize=8`),
+    enabled: debouncedQuery.trim().length >= 2
+  });
+
+  return (
+    <div ref={boxRef} className="relative w-52">
+      <input
+        className="w-full rounded-md border border-slate-300 px-2 py-1 text-sm"
+        placeholder="Buscar cliente..."
+        value={query}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setOpen(true);
+          if (e.target.value === "") onClear();
+        }}
+        onFocus={() => query.trim().length >= 2 && setOpen(true)}
+      />
+      {open && debouncedQuery.trim().length >= 2 && (
+        <div className="absolute z-10 mt-1 w-full rounded-md border border-slate-200 bg-white shadow-md">
+          {searchQuery.isLoading && <p className="px-3 py-2 text-xs text-slate-400">Buscando...</p>}
+          {searchQuery.data && searchQuery.data.data.length === 0 && (
+            <p className="px-3 py-2 text-xs text-slate-400">Sin coincidencias.</p>
+          )}
+          {searchQuery.data?.data.map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-50"
+              onClick={() => {
+                const name = `${a.first_name} ${a.last_name}`;
+                setQuery(name);
+                setOpen(false);
+                onSelect({ id: a.id, name });
+              }}
+            >
+              {a.first_name} {a.last_name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const MONTH_NAMES = [
   "Enero",
@@ -62,6 +158,7 @@ interface MoraBucket {
 
 interface CreditMonthlyDetailRow {
   creditNumber: string;
+  associateId: number | null;
   clientName: string;
   paymentDay: number;
   status: string;
@@ -86,7 +183,7 @@ export default function ReportsPage() {
   const today = new Date();
   const [detailYear, setDetailYear] = useState<string>(String(today.getFullYear()));
   const [detailMonth, setDetailMonth] = useState<string>(String(today.getMonth() + 1));
-  const [detailClientFilter, setDetailClientFilter] = useState("");
+  const [selectedAssociate, setSelectedAssociate] = useState<{ id: number; name: string } | null>(null);
 
   const dueQuery = useQuery({
     queryKey: ["report-due", date],
@@ -134,12 +231,9 @@ export default function ReportsPage() {
 
   const filteredDetailRows = useMemo(() => {
     const rows = detailQuery.data?.data ?? [];
-    const q = detailClientFilter.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter(
-      (r) => r.clientName.toLowerCase().includes(q) || r.creditNumber.toLowerCase().includes(q)
-    );
-  }, [detailQuery.data, detailClientFilter]);
+    if (!selectedAssociate) return rows;
+    return rows.filter((r) => r.associateId === selectedAssociate.id);
+  }, [detailQuery.data, selectedAssociate]);
 
   const detailTotals = useMemo(() => {
     const rows = filteredDetailRows;
@@ -172,52 +266,113 @@ export default function ReportsPage() {
   }, [filteredDetailRows]);
 
   function downloadDetailCsv() {
-    const header = [
-      "Credito",
-      "Cliente",
-      "Dia pago",
-      "Estado",
-      "Valor credito",
-      "Valor cuota",
-      "Cuotas pagas",
-      "Cuotas totales",
-      "Cuotas pendientes",
-      "Valor pagado",
-      "Valor pendiente",
-      "Recaudo del mes",
-      "Capital x recaudar",
-      "Interes x recaudar",
-      "Capital recaudado",
-      "Interes recaudado"
-    ];
-    const rows = filteredDetailRows.map((r) => [
-      r.creditNumber,
-      r.clientName,
-      r.paymentDay,
-      r.status,
-      r.creditValue,
-      r.installmentValue,
-      r.installmentsPaid,
-      r.installmentsCount,
-      r.installmentsPending,
-      r.paidToDate,
-      r.pendingToDate,
-      r.collectedMonth,
-      r.principalToCollect,
-      r.interestToCollect,
-      r.principalCollectedMonth,
-      r.interestCollectedMonth
-    ]);
-    const csv = [header, ...rows]
-      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
-      .join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `detalle-mensual-${detailYear}-${String(detailMonth).padStart(2, "0")}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
+    downloadCsv(
+      `detalle-mensual-${detailYear}-${String(detailMonth).padStart(2, "0")}.csv`,
+      [
+        "Credito",
+        "Cliente",
+        "Dia pago",
+        "Estado",
+        "Valor credito",
+        "Valor cuota",
+        "Cuotas pagas",
+        "Cuotas totales",
+        "Cuotas pendientes",
+        "Valor pagado",
+        "Valor pendiente",
+        "Recaudo del mes",
+        "Capital x recaudar",
+        "Interes x recaudar",
+        "Capital recaudado",
+        "Interes recaudado"
+      ],
+      filteredDetailRows.map((r) => [
+        r.creditNumber,
+        r.clientName,
+        r.paymentDay,
+        r.status,
+        r.creditValue,
+        r.installmentValue,
+        r.installmentsPaid,
+        r.installmentsCount,
+        r.installmentsPending,
+        r.paidToDate,
+        r.pendingToDate,
+        r.collectedMonth,
+        r.principalToCollect,
+        r.interestToCollect,
+        r.principalCollectedMonth,
+        r.interestCollectedMonth
+      ])
+    );
+  }
+
+  function downloadMonthlySummaryCsv() {
+    downloadCsv(
+      "reporte-mensual-cartera.csv",
+      [
+        "Año",
+        "Mes",
+        "Creditos desembolsados",
+        "Valor desembolsos",
+        "Creditos cancelados",
+        "Valor cancelados",
+        "Cuotas x recaudo",
+        "Valor x recaudo",
+        "Cuotas pagas",
+        "% cuotas pagas",
+        "Valor recaudado",
+        "% recaudado"
+      ],
+      (monthlyQuery.data?.data ?? []).map((r) => [
+        r.year,
+        MONTH_NAMES[r.month - 1] ?? "",
+        r.creditsDisbursedCount,
+        r.disbursedAmount,
+        r.creditsCancelledCount,
+        r.cancelledAmount,
+        r.installmentsDueCount,
+        r.dueAmount,
+        r.installmentsPaidCount,
+        r.installmentsPaidPercent.toFixed(2),
+        r.collectedAmount,
+        r.collectedPercent.toFixed(2)
+      ])
+    );
+  }
+
+  function downloadDueCsv() {
+    downloadCsv(
+      `pagos-del-${date}.csv`,
+      ["Credito", "Titular", "Valor cuota"],
+      (dueQuery.data?.data ?? []).map((r) => [
+        r.credit_number,
+        r.first_name ? `${r.first_name} ${r.last_name}` : "—",
+        r.total_due
+      ])
+    );
+  }
+
+  function downloadMoraBucketsCsv() {
+    downloadCsv(
+      "mora-por-bucket.csv",
+      ["Codigo", "Bucket", "Cuotas", "Valor"],
+      (moraBucketsQuery.data?.data ?? []).map((b) => [b.code, b.label, b.count, b.value])
+    );
+  }
+
+  function downloadOverdueCsv() {
+    downloadCsv(
+      "cuotas-vencidas.csv",
+      ["Credito", "Titular", "Dias de atraso", "Mora", "Saldo"],
+      (overdueQuery.data?.data ?? []).map((r) => [
+        r.credit_number,
+        r.first_name ? `${r.first_name} ${r.last_name}` : "—",
+        r.overdue_days,
+        r.moraCode,
+        r.balance
+      ])
+    );
   }
 
   const totals = useMemo(() => {
@@ -285,6 +440,14 @@ export default function ReportsPage() {
                 </option>
               ))}
             </select>
+            <button
+              type="button"
+              onClick={downloadMonthlySummaryCsv}
+              disabled={!monthlyQuery.data?.data.length}
+              className="rounded-md border border-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+            >
+              Exportar CSV
+            </button>
           </div>
         </div>
         {monthlyQuery.isLoading && <Loading />}
@@ -370,12 +533,7 @@ export default function ReportsPage() {
             </p>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <input
-              className="w-40 rounded-md border border-slate-300 px-2 py-1 text-sm"
-              placeholder="Buscar cliente o crédito"
-              value={detailClientFilter}
-              onChange={(e) => setDetailClientFilter(e.target.value)}
-            />
+            <ClientAutocomplete onSelect={setSelectedAssociate} onClear={() => setSelectedAssociate(null)} />
             <select
               className="rounded-md border border-slate-300 px-2 py-1 text-sm"
               value={detailYear}
@@ -413,8 +571,8 @@ export default function ReportsPage() {
         {detailQuery.data && filteredDetailRows.length === 0 && (
           <EmptyView
             message={
-              detailClientFilter
-                ? "Ningún crédito coincide con la búsqueda."
+              selectedAssociate
+                ? `${selectedAssociate.name} no tenía créditos abiertos en el mes seleccionado.`
                 : "Ningún crédito estaba abierto en el mes seleccionado."
             }
           />
@@ -502,12 +660,22 @@ export default function ReportsPage() {
       <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-slate-700">¿Quién debe pagar en una fecha?</h2>
-          <input
-            type="date"
-            className="rounded-md border border-slate-300 px-2 py-1 text-sm"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-          />
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              className="rounded-md border border-slate-300 px-2 py-1 text-sm"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
+            <button
+              type="button"
+              onClick={downloadDueCsv}
+              disabled={!dueQuery.data?.data.length}
+              className="rounded-md border border-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+            >
+              Exportar CSV
+            </button>
+          </div>
         </div>
         {dueQuery.isLoading && <Loading />}
         {dueQuery.error && <ErrorView message={(dueQuery.error as Error).message} />}
@@ -537,7 +705,17 @@ export default function ReportsPage() {
       </div>
 
       <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
-        <h2 className="mb-1 text-sm font-semibold text-slate-700">Mora por bucket</h2>
+        <div className="mb-1 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-slate-700">Mora por bucket</h2>
+          <button
+            type="button"
+            onClick={downloadMoraBucketsCsv}
+            disabled={!moraBucketsQuery.data?.data.length}
+            className="rounded-md border border-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+          >
+            Exportar CSV
+          </button>
+        </div>
         <p className="mb-3 text-xs text-slate-400">
           Mismos códigos que usa la cooperativa hoy en su Excel (CD001 al día, CM030…CM180 días de atraso).
         </p>
@@ -560,7 +738,17 @@ export default function ReportsPage() {
       </div>
 
       <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
-        <h2 className="mb-3 text-sm font-semibold text-slate-700">Cuotas vencidas y días de atraso</h2>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-slate-700">Cuotas vencidas y días de atraso</h2>
+          <button
+            type="button"
+            onClick={downloadOverdueCsv}
+            disabled={!overdueQuery.data?.data.length}
+            className="rounded-md border border-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+          >
+            Exportar CSV
+          </button>
+        </div>
         {overdueQuery.isLoading && <Loading />}
         {overdueQuery.error && <ErrorView message={(overdueQuery.error as Error).message} />}
         {overdueQuery.data && overdueQuery.data.data.length === 0 && (
