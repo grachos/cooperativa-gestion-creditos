@@ -90,25 +90,49 @@ async function upsertUser(email: string, username: string, fullName: string, rol
 }
 
 async function seedParameters() {
-  const params: Record<string, unknown> = {
-    delinquency_policy: DEFAULT_DELINQUENCY_POLICY,
-    mora_buckets: MORA_BUCKETS,
-    allocation_order: ["GASTOS", "MORA", "INTERES", "CAPITAL"],
-    payment_methods: ["EFECTIVO", "TRANSFERENCIA", "CONSIGNACION", "DESCUENTO_NOMINA"],
-    id_types: ["CC", "CE", "TI", "PA", "NIT"],
-    interest_model: {
-      type: "FLAT_SIMPLE",
+  const params: Record<string, { value: unknown; description: string }> = {
+    politica_mora: {
+      value: DEFAULT_DELINQUENCY_POLICY,
       description:
-        "Interés fijo sobre el capital original, repartido en partes iguales entre todas las cuotas. Confirmado contra el histórico real de la cooperativa (créditos a ~4% mensual plano). No es amortización francesa.",
-      defaultMonthlyRatePercent: 4
+        "Política de mora vigente: hoy la cooperativa no cobra interés de mora automático (confirmado contra el histórico real, sin evidencia de cargos automáticos por mora); solo hace seguimiento por rangos de días de atraso y aplica cargos puntuales manuales cuando corresponde."
     },
-    adjustment_types: ["INTERES_CAMBIO_FECHA", "DESCUENTO", "GASTO_NOTIFICACION", "OTRO"]
+    rangos_mora: {
+      value: MORA_BUCKETS,
+      description:
+        "Rangos (buckets) de días de atraso usados para clasificar la mora de cada cuota, con los mismos códigos que usa hoy la cooperativa en su Excel."
+    },
+    orden_aplicacion_pago: {
+      value: ["GASTOS", "MORA", "INTERES", "CAPITAL"],
+      description: "Orden en que se aplica un pago recibido a un crédito: primero gastos, luego mora, luego interés y por último capital."
+    },
+    metodos_pago: {
+      value: ["EFECTIVO", "TRANSFERENCIA", "CONSIGNACION", "DESCUENTO_NOMINA"],
+      description: "Métodos de pago aceptados para registrar un abono a un crédito."
+    },
+    tipos_identificacion: {
+      value: ["CC", "CE", "TI", "PA", "NIT"],
+      description: "Tipos de documento de identificación aceptados para asociados y usuarios del sistema."
+    },
+    modelo_interes: {
+      value: {
+        type: "FLAT_SIMPLE",
+        description:
+          "Interés fijo sobre el capital original, repartido en partes iguales entre todas las cuotas. Confirmado contra el histórico real de la cooperativa (créditos a ~4% mensual plano). No es amortización francesa.",
+        defaultMonthlyRatePercent: 4
+      },
+      description:
+        "Modelo de interés usado para calcular las cuotas: interés fijo sobre el capital original repartido en partes iguales entre todas las cuotas (no es amortización francesa). Confirmado contra el histórico real de créditos de la cooperativa."
+    },
+    tipos_ajuste: {
+      value: ["INTERES_CAMBIO_FECHA", "DESCUENTO", "GASTO_NOTIFICACION", "OTRO"],
+      description: "Tipos de ajuste manual que se pueden aplicar a un crédito (cambio de fecha con interés, descuento, gasto de notificación, u otro)."
+    }
   };
-  for (const [key, value] of Object.entries(params)) {
+  for (const [key, { value, description }] of Object.entries(params)) {
     await pool.query(
       `INSERT INTO parameters (\`key\`, value, description) VALUES (?, ?, ?)
        ON CONFLICT ("key") DO NOTHING`,
-      [key, JSON.stringify(value), "Parámetro de demostración, pendiente de confirmación definitiva"]
+      [key, JSON.stringify(value), description]
     );
   }
 }

@@ -23,7 +23,7 @@ const createSchema = z.object({
     .max(80)
     .regex(/^[a-z0-9_]+$/, "La llave solo puede tener minúsculas, números y guiones bajos"),
   value: z.unknown(),
-  description: z.string().max(255).optional()
+  description: z.string().max(500).optional()
 });
 
 parametersRouter.post(
@@ -58,7 +58,7 @@ parametersRouter.post(
 
 const updateSchema = z.object({
   value: z.unknown(),
-  description: z.string().max(255).optional(),
+  description: z.string().max(500).optional(),
   reason: z.string().optional()
 });
 
