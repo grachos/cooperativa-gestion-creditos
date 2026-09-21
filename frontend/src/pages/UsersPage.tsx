@@ -248,6 +248,8 @@ export default function UsersPage() {
     createUser.mutate();
   }
 
+  const [tab, setTab] = useState<"manage" | "create">("manage");
+
   if (isLoading || isLoadingManaged) return <Loading />;
   if (error || managedError) return <ErrorView message={((error ?? managedError) as Error).message} />;
 
@@ -261,28 +263,57 @@ export default function UsersPage() {
         </p>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <p className="mb-2 text-sm font-semibold text-slate-700">
-          {canWrite ? "Usuarios (activar/desactivar, roles, contraseña)" : "Usuarios activos"}
-        </p>
-        {canWrite ? (
-          <div className="space-y-2">
-            {managed?.data.map((u) => (
-              <EditUserRow key={u.id} user={u} roles={roles?.data ?? []} />
-            ))}
-          </div>
-        ) : (
-          <ul className="divide-y divide-slate-100">
-            {data?.data.map((u) => (
-              <li key={u.id} className="py-2 text-sm text-slate-600">
-                {u.full_name} <span className="text-slate-400">— {u.email}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
       {canWrite && (
+        <div className="flex gap-1 border-b border-slate-200">
+          <button
+            type="button"
+            onClick={() => setTab("manage")}
+            className={`px-3 py-2 text-sm font-medium ${
+              tab === "manage"
+                ? "border-b-2 border-emerald-600 text-emerald-700"
+                : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            Consultar y editar
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("create")}
+            className={`px-3 py-2 text-sm font-medium ${
+              tab === "create"
+                ? "border-b-2 border-emerald-600 text-emerald-700"
+                : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            Crear usuario
+          </button>
+        </div>
+      )}
+
+      {(!canWrite || tab === "manage") && (
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <p className="mb-2 text-sm font-semibold text-slate-700">
+            {canWrite ? "Usuarios (activar/desactivar, roles, contraseña)" : "Usuarios activos"}
+          </p>
+          {canWrite ? (
+            <div className="space-y-2">
+              {managed?.data.map((u) => (
+                <EditUserRow key={u.id} user={u} roles={roles?.data ?? []} />
+              ))}
+            </div>
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {data?.data.map((u) => (
+                <li key={u.id} className="py-2 text-sm text-slate-600">
+                  {u.full_name} <span className="text-slate-400">— {u.email}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {canWrite && tab === "create" && (
         <form onSubmit={onSubmit} className="space-y-4 rounded-xl border border-slate-200 bg-white p-4">
           <p className="text-sm font-semibold text-slate-700">Nuevo usuario</p>
           {formError && <p className="rounded-md bg-red-50 p-2 text-sm text-red-700">{formError}</p>}

@@ -401,10 +401,36 @@ export default function ReportsPage() {
     );
   }, [monthlyQuery.data]);
 
+  const TABS = [
+    { key: "monthly", label: "Reporte mensual" },
+    { key: "detail", label: "Detalle por crédito" },
+    { key: "due", label: "Pagos por fecha" },
+    { key: "mora", label: "Mora por bucket" },
+    { key: "overdue", label: "Cuotas vencidas" },
+    { key: "export", label: "Exportar pagos" }
+  ] as const;
+  const [tab, setTab] = useState<(typeof TABS)[number]["key"]>("monthly");
+
   return (
     <div>
       <h1 className="mb-4 text-xl font-semibold text-slate-800">Reportes</h1>
 
+      <div className="mb-6 flex flex-wrap gap-1 border-b border-slate-200">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => setTab(t.key)}
+            className={`px-3 py-2 text-sm font-medium ${
+              tab === t.key ? "border-b-2 border-emerald-600 text-emerald-700" : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "monthly" && (
       <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0">
@@ -521,7 +547,9 @@ export default function ReportsPage() {
           </div>
         )}
       </div>
+      )}
 
+      {tab === "detail" && (
       <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0">
@@ -656,7 +684,9 @@ export default function ReportsPage() {
           </div>
         )}
       </div>
+      )}
 
+      {tab === "due" && (
       <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-slate-700">¿Quién debe pagar en una fecha?</h2>
@@ -703,7 +733,9 @@ export default function ReportsPage() {
           </table>
         )}
       </div>
+      )}
 
+      {tab === "mora" && (
       <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
         <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-slate-700">Mora por bucket</h2>
@@ -736,7 +768,9 @@ export default function ReportsPage() {
           </div>
         )}
       </div>
+      )}
 
+      {tab === "overdue" && (
       <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-slate-700">Cuotas vencidas y días de atraso</h2>
@@ -781,14 +815,20 @@ export default function ReportsPage() {
           </table>
         )}
       </div>
+      )}
 
-      <a
-        href="/api/v1/reports/payments.csv"
-        className="inline-block rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100"
-      >
-        Exportar pagos (CSV)
-      </a>
-      <p className="mt-2 text-xs text-slate-400">Generado: {formatDate(new Date().toISOString())}</p>
+      {tab === "export" && (
+      <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
+        <h2 className="mb-3 text-sm font-semibold text-slate-700">Exportar todos los pagos</h2>
+        <a
+          href="/api/v1/reports/payments.csv"
+          className="inline-block rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100"
+        >
+          Exportar pagos (CSV)
+        </a>
+        <p className="mt-2 text-xs text-slate-400">Generado: {formatDate(new Date().toISOString())}</p>
+      </div>
+      )}
     </div>
   );
 }
