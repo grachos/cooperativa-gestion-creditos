@@ -89,7 +89,7 @@ export const refinanceSchema = z.object({
 });
 
 export const adjustmentSchema = z.object({
-  type: z.enum(["INTERES_CAMBIO_FECHA", "DESCUENTO", "GASTO_NOTIFICACION", "OTRO"]),
+  type: z.string().trim().min(1).max(30),
   installmentId: z.coerce.number().int().positive().optional().nullable(),
   amount: z.coerce.number(),
   reason: z.string().min(3).max(255)

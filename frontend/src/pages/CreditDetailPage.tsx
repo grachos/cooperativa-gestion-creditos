@@ -5,6 +5,10 @@ import { api } from "../lib/api";
 import { formatCurrency, formatDate, formatPercent } from "../lib/format";
 import { Loading, ErrorView } from "../components/StateViews";
 import { useAuth } from "../context/AuthContext";
+import { useParameterList } from "../hooks/useParameterList";
+
+const DEFAULT_PAYMENT_METHODS = ["EFECTIVO", "TRANSFERENCIA", "CONSIGNACION", "DESCUENTO_NOMINA"];
+const DEFAULT_ADJUSTMENT_TYPES = ["INTERES_CAMBIO_FECHA", "DESCUENTO", "GASTO_NOTIFICACION", "OTRO"];
 
 interface Installment {
   id: number;
@@ -274,6 +278,7 @@ function SummaryCard({ label, value }: { label: string; value: string }) {
 }
 
 function PaymentForm({ creditId, onRegistered }: { creditId: number; onRegistered: () => void }) {
+  const paymentMethods = useParameterList("metodos_pago", DEFAULT_PAYMENT_METHODS);
   const [amount, setAmount] = useState("");
   const [receivedDate, setReceivedDate] = useState(new Date().toISOString().slice(0, 10));
   const [paymentMethod, setPaymentMethod] = useState("TRANSFERENCIA");
@@ -325,7 +330,7 @@ function PaymentForm({ creditId, onRegistered }: { creditId: number; onRegistere
           value={paymentMethod}
           onChange={(e) => setPaymentMethod(e.target.value)}
         >
-          {["EFECTIVO", "TRANSFERENCIA", "CONSIGNACION", "DESCUENTO_NOMINA"].map((m) => (
+          {paymentMethods.map((m) => (
             <option key={m} value={m}>
               {m}
             </option>
@@ -413,6 +418,7 @@ function ResolvePromiseButtons({ actionId, onDone }: { actionId: number; onDone:
 }
 
 function AdjustmentForm({ creditId, onCreated }: { creditId: number; onCreated: () => void }) {
+  const adjustmentTypes = useParameterList("tipos_ajuste", DEFAULT_ADJUSTMENT_TYPES);
   const [type, setType] = useState("GASTO_NOTIFICACION");
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");
@@ -443,7 +449,7 @@ function AdjustmentForm({ creditId, onCreated }: { creditId: number; onCreated: 
         value={type}
         onChange={(e) => setType(e.target.value)}
       >
-        {["INTERES_CAMBIO_FECHA", "DESCUENTO", "GASTO_NOTIFICACION", "OTRO"].map((t) => (
+        {adjustmentTypes.map((t) => (
           <option key={t} value={t}>
             {t}
           </option>
