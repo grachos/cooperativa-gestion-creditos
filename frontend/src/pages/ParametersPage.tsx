@@ -141,6 +141,30 @@ function buildValue(shape: Shape, s: ValueState): unknown {
   }
 }
 
+/** Traducción de nombres de campo dentro del valor de un parámetro (llaves
+ * internas del JSON, no la llave del parámetro) — puramente de exhibición,
+ * no cambia lo que se guarda. */
+const FIELD_LABELS: Record<string, string> = {
+  code: "Código",
+  label: "Etiqueta",
+  minDays: "Días mínimos",
+  maxDays: "Días máximos",
+  graceDays: "Días de gracia",
+  earlyAlertDays: "Días de alerta temprana",
+  base: "Base de cálculo",
+  rateType: "Tipo de tasa",
+  rateOrValue: "Tasa o valor",
+  cap: "Tope máximo",
+  version: "Versión",
+  type: "Tipo",
+  description: "Descripción",
+  defaultMonthlyRatePercent: "Tasa mensual por defecto (%)"
+};
+
+function fieldLabel(key: string): string {
+  return FIELD_LABELS[key] ?? key;
+}
+
 const FIELD_TYPE_LABELS: Record<FieldType, string> = {
   string: "Texto",
   number: "Número",
@@ -156,12 +180,15 @@ function ObjectFieldsEditor({ fields, onChange }: { fields: Field[]; onChange: (
     <div className="space-y-2">
       {fields.map((f, i) => (
         <div key={i} className="flex flex-wrap items-center gap-2">
-          <input
-            placeholder="campo"
-            value={f.key}
-            onChange={(e) => update(i, { key: e.target.value })}
-            className="w-32 rounded-md border border-slate-300 px-2 py-1 text-xs"
-          />
+          <div className="w-32">
+            <input
+              placeholder="campo"
+              value={f.key}
+              onChange={(e) => update(i, { key: e.target.value })}
+              className="w-full rounded-md border border-slate-300 px-2 py-1 text-xs"
+            />
+            {FIELD_LABELS[f.key] && <p className="mt-0.5 text-[10px] text-slate-400">{FIELD_LABELS[f.key]}</p>}
+          </div>
           <select
             value={f.type}
             onChange={(e) => update(i, { type: e.target.value as FieldType })}
@@ -292,6 +319,9 @@ function ListObjectEditor({
                       ×
                     </button>
                   </div>
+                  {FIELD_LABELS[c.name] && (
+                    <p className="mt-0.5 text-[10px] font-normal normal-case text-slate-400">{FIELD_LABELS[c.name]}</p>
+                  )}
                 </th>
               ))}
               <th></th>
@@ -408,7 +438,7 @@ function ReadOnlyValue({ shape, value }: { shape: Shape; value: unknown }) {
       <dl className="grid grid-cols-[auto,1fr] gap-x-3 gap-y-1 text-xs">
         {entries.map(([k, v]) => (
           <Fragment key={k}>
-            <dt className="font-medium text-slate-500">{k}</dt>
+            <dt className="font-medium text-slate-500">{fieldLabel(k)}</dt>
             <dd className="text-slate-700">{v === null ? "—" : String(v)}</dd>
           </Fragment>
         ))}
@@ -439,7 +469,7 @@ function ReadOnlyValue({ shape, value }: { shape: Shape; value: unknown }) {
             <tr>
               {cols.map((c) => (
                 <th key={c} className="py-1 pr-3 text-left text-slate-400">
-                  {c}
+                  {fieldLabel(c)}
                 </th>
               ))}
             </tr>
