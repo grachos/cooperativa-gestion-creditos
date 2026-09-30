@@ -5,6 +5,9 @@ import { Plus, Search } from "lucide-react";
 import { api } from "../lib/api";
 import { Loading, ErrorView, EmptyView } from "../components/StateViews";
 import { useAuth } from "../context/AuthContext";
+import { useParameterList } from "../hooks/useParameterList";
+
+const DEFAULT_ID_TYPES = ["CC", "CE", "TI", "PA", "NIT"];
 
 interface Associate {
   id: number;
@@ -140,6 +143,7 @@ export default function AssociatesPage() {
 }
 
 function NewAssociateForm({ onCreated }: { onCreated: () => void }) {
+  const idTypes = useParameterList("tipos_identificacion", DEFAULT_ID_TYPES);
   const [form, setForm] = useState({
     idType: "CC",
     idNumber: "",
@@ -198,7 +202,7 @@ function NewAssociateForm({ onCreated }: { onCreated: () => void }) {
             value={form.idType}
             onChange={(e) => setForm({ ...form, idType: e.target.value })}
           >
-            {["CC", "CE", "TI", "PA", "NIT"].map((t) => (
+            {idTypes.map((t) => (
               <option key={t} value={t}>
                 {t}
               </option>

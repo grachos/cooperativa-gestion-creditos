@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { Loading, ErrorView } from "../components/StateViews";
 import { useAuth } from "../context/AuthContext";
+import { useParameterList } from "../hooks/useParameterList";
 
 interface UserRow {
   id: number;
@@ -23,7 +24,7 @@ interface ManagedUser {
   address: string | null;
 }
 
-const ID_TYPES = ["CC", "CE", "TI", "PA", "NIT"];
+const DEFAULT_ID_TYPES = ["CC", "CE", "TI", "PA", "NIT"];
 
 interface Role {
   code: string;
@@ -31,6 +32,7 @@ interface Role {
 }
 
 function EditUserRow({ user, roles }: { user: ManagedUser; roles: Role[] }) {
+  const idTypes = useParameterList("tipos_identificacion", DEFAULT_ID_TYPES);
   const queryClient = useQueryClient();
   const [roleCodes, setRoleCodes] = useState(user.role_codes);
   const [newPassword, setNewPassword] = useState("");
@@ -109,7 +111,7 @@ function EditUserRow({ user, roles }: { user: ManagedUser; roles: Role[] }) {
           onChange={(e) => setContact({ ...contact, idType: e.target.value })}
         >
           <option value="">Tipo ID</option>
-          {ID_TYPES.map((t) => (
+          {idTypes.map((t) => (
             <option key={t} value={t}>
               {t}
             </option>
@@ -177,6 +179,7 @@ function EditUserRow({ user, roles }: { user: ManagedUser; roles: Role[] }) {
 
 export default function UsersPage() {
   const { hasPermission } = useAuth();
+  const idTypes = useParameterList("tipos_identificacion", DEFAULT_ID_TYPES);
   const queryClient = useQueryClient();
   const canWrite = hasPermission("users:write");
 
@@ -359,7 +362,7 @@ export default function UsersPage() {
                 onChange={(e) => setForm({ ...form, idType: e.target.value })}
               >
                 <option value="">—</option>
-                {ID_TYPES.map((t) => (
+                {idTypes.map((t) => (
                   <option key={t} value={t}>
                     {t}
                   </option>

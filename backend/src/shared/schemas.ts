@@ -8,7 +8,7 @@ export const loginSchema = z.object({
 });
 
 export const associateSchema = z.object({
-  idType: z.enum(["CC", "CE", "TI", "PA", "NIT"]),
+  idType: z.string().trim().min(1).max(20),
   idNumber: z.string().min(4).max(40),
   firstName: z.string().min(1).max(100),
   lastName: z.string().min(1).max(100),
@@ -124,7 +124,7 @@ export const createUserSchema = z.object({
   email: z.string().email().max(160),
   username: z.string().min(3).max(80),
   password: z.string().min(8).max(72),
-  idType: z.enum(["CC", "CE", "TI", "PA", "NIT"]).optional().nullable(),
+  idType: z.string().trim().min(1).max(20).optional().nullable(),
   idNumber: z.string().max(40).optional().nullable(),
   phone: z.string().max(40).optional().nullable(),
   address: z.string().max(255).optional().nullable(),
@@ -135,7 +135,7 @@ export const updateUserSchema = z.object({
   status: z.enum(["ACTIVO", "INACTIVO"]).optional(),
   roleCodes: z.array(z.string()).optional(),
   password: z.string().min(8).max(72).optional(),
-  idType: z.enum(["CC", "CE", "TI", "PA", "NIT"]).optional().nullable(),
+  idType: z.string().trim().min(1).max(20).optional().nullable(),
   idNumber: z.string().max(40).optional().nullable(),
   phone: z.string().max(40).optional().nullable(),
   address: z.string().max(255).optional().nullable()
