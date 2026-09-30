@@ -9,6 +9,12 @@ import { useParameterList } from "../hooks/useParameterList";
 
 const DEFAULT_ID_TYPES = ["CC", "CE", "TI", "PA", "NIT"];
 
+const STATUS_STYLES: Record<string, string> = {
+  ACTIVO: "bg-emerald-50 text-emerald-700",
+  INACTIVO: "bg-slate-100 text-slate-500",
+  RECHAZADO: "bg-red-50 text-red-700"
+};
+
 interface Associate {
   id: number;
   first_name: string;
@@ -85,9 +91,7 @@ export default function AssociatesPage() {
                     {a.first_name} {a.last_name}
                   </span>
                   <span
-                    className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${
-                      a.status === "ACTIVO" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"
-                    }`}
+                    className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${STATUS_STYLES[a.status] ?? "bg-slate-100 text-slate-500"}`}
                   >
                     {a.status}
                   </span>
@@ -124,9 +128,7 @@ export default function AssociatesPage() {
                     <td className="px-4 py-2">{a.phone ?? a.email ?? "—"}</td>
                     <td className="px-4 py-2">
                       <span
-                        className={`rounded-full px-2 py-0.5 text-xs ${
-                          a.status === "ACTIVO" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"
-                        }`}
+                        className={`rounded-full px-2 py-0.5 text-xs ${STATUS_STYLES[a.status] ?? "bg-slate-100 text-slate-500"}`}
                       >
                         {a.status}
                       </span>

@@ -13,7 +13,7 @@ export default function NewApplicationPage() {
   const navigate = useNavigate();
   const { data: associates } = useQuery({
     queryKey: ["associates", "picker"],
-    queryFn: () => api.get<{ data: AssociateOption[] }>("/associates?pageSize=100")
+    queryFn: () => api.get<{ data: AssociateOption[] }>("/associates?pageSize=100&selectable=true")
   });
 
   const [form, setForm] = useState({

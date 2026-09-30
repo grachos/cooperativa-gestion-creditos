@@ -28,6 +28,10 @@ export const associateSchema = z.object({
   dataConsent: z.boolean().optional()
 });
 
+export const associateStatusSchema = z.object({
+  status: z.enum(["ACTIVO", "INACTIVO", "RECHAZADO"])
+});
+
 export const societySchema = z.object({
   taxIdType: z.enum(["NIT"]),
   taxIdNumber: z.string().min(4).max(40),

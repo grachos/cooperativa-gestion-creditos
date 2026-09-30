@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { pool } from "../../db/pool.js";
-import { associateSchema, idParam, paginationQuery } from "../../shared/schemas.js";
+import { associateSchema, associateStatusSchema, idParam, paginationQuery } from "../../shared/schemas.js";
 import { asyncHandler, HttpError } from "../../middlewares/error.middleware.js";
 import { requireAuth, requirePermission } from "../../middlewares/auth.middleware.js";
 import { recordAudit } from "../audit/audit.service.js";
@@ -13,12 +13,22 @@ associatesRouter.get(
   asyncHandler(async (req, res) => {
     const { page, pageSize } = paginationQuery.parse(req.query);
     const search = (req.query.search as string | undefined)?.trim();
+    // Usado por el selector de titular/codeudor de una solicitud nueva: un
+    // asociado inactivo o rechazado como participante no debe poder
+    // volver a elegirse.
+    const selectable = req.query.selectable === "true";
     const offset = (page - 1) * pageSize;
 
-    const where = search
-      ? `WHERE first_name LIKE ? OR last_name LIKE ? OR id_number LIKE ?`
-      : "";
-    const args = search ? [`%${search}%`, `%${search}%`, `%${search}%`] : [];
+    const conditions: string[] = [];
+    const args: unknown[] = [];
+    if (search) {
+      conditions.push(`(first_name LIKE ? OR last_name LIKE ? OR id_number LIKE ?)`);
+      args.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    }
+    if (selectable) {
+      conditions.push(`status = 'ACTIVO'`);
+    }
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
     const [rows] = await pool.query<any[]>(
       `SELECT * FROM associates ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
@@ -163,7 +173,7 @@ associatesRouter.post(
   requirePermission("associates:write"),
   asyncHandler(async (req, res) => {
     const { id } = idParam.parse(req.params);
-    const status = req.body?.status === "INACTIVO" ? "INACTIVO" : "ACTIVO";
+    const { status } = associateStatusSchema.parse(req.body);
     await pool.query(`UPDATE associates SET status = ? WHERE id = ?`, [status, id]);
     await recordAudit(pool, {
       entity: "associate",

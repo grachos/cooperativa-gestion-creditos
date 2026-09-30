@@ -155,12 +155,36 @@ applicationsRouter.put(
       `SELECT * FROM credit_participants WHERE id = ? AND credit_application_id = ?`,
       [participantId, id]
     );
-    if ((partRows as any[]).length === 0) throw new HttpError(404, "Participante no encontrado");
+    const participant = (partRows as any[])[0];
+    if (!participant) throw new HttpError(404, "Participante no encontrado");
 
     await pool.query(
       `UPDATE credit_participants SET status = ?, notes = ?, reviewed_by = ?, reviewed_at = NOW() WHERE id = ?`,
       [status, notes ?? null, req.user!.id, participantId]
     );
+
+    // Un asociado rechazado como participante no debe poder elegirse como
+    // titular/codeudor en una solicitud nueva (ver GET /associates?selectable=true).
+    // Si la revisión se corrige más adelante, se reactiva — pero solo si
+    // sigue en RECHAZADO (no se pisa un INACTIVO puesto por otro motivo).
+    if (participant.associate_id) {
+      if (status === "RECHAZADO") {
+        await pool.query(`UPDATE associates SET status = 'RECHAZADO' WHERE id = ?`, [participant.associate_id]);
+        await recordAudit(pool, {
+          entity: "associate",
+          entityId: participant.associate_id,
+          action: "STATUS_CHANGE",
+          newValue: { status: "RECHAZADO", reason: `Rechazado como participante en la solicitud #${id}` },
+          userId: req.user!.id,
+          ipAddress: req.ip
+        });
+      } else {
+        await pool.query(
+          `UPDATE associates SET status = 'ACTIVO' WHERE id = ? AND status = 'RECHAZADO'`,
+          [participant.associate_id]
+        );
+      }
+    }
 
     res.json({ id: participantId, status });
   })
