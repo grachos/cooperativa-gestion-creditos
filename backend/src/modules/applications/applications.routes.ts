@@ -1,6 +1,7 @@
 import { Router } from "express";
+import { z } from "zod";
 import { pool } from "../../db/pool.js";
-import { creditApplicationSchema, decisionSchema, idParam, paginationQuery } from "../../shared/schemas.js";
+import { creditApplicationSchema, decisionSchema, idParam, paginationQuery, reviewItemSchema } from "../../shared/schemas.js";
 import { asyncHandler, HttpError } from "../../middlewares/error.middleware.js";
 import { requireAuth, requirePermission } from "../../middlewares/auth.middleware.js";
 import { recordAudit } from "../audit/audit.service.js";
@@ -50,6 +51,32 @@ applicationsRouter.get(
   })
 );
 
+/**
+ * Crea (si faltan) una fila PENDIENTE por cada tipo de documento listado en
+ * el parámetro `documentos_requeridos`, para que la solicitud siempre
+ * refleje la lista vigente de documentos a verificar, incluso si el
+ * parámetro cambió después de radicada la solicitud.
+ */
+async function ensureRequiredDocuments(applicationId: number) {
+  const [paramRows] = await pool.query<any[]>(`SELECT value FROM parameters WHERE \`key\` = 'documentos_requeridos'`);
+  const requiredTypes: string[] = (paramRows as any[])[0]?.value ?? [];
+  if (requiredTypes.length === 0) return;
+
+  const [existingRows] = await pool.query<any[]>(
+    `SELECT document_type FROM credit_application_documents WHERE credit_application_id = ?`,
+    [applicationId]
+  );
+  const existing = new Set((existingRows as any[]).map((r) => r.document_type));
+
+  for (const documentType of requiredTypes) {
+    if (existing.has(documentType)) continue;
+    await pool.query(
+      `INSERT INTO credit_application_documents (credit_application_id, document_type) VALUES (?, ?)`,
+      [applicationId, documentType]
+    );
+  }
+}
+
 applicationsRouter.get(
   "/:id",
   asyncHandler(async (req, res) => {
@@ -58,10 +85,16 @@ applicationsRouter.get(
     const application = (rows as any[])[0];
     if (!application) throw new HttpError(404, "Solicitud no encontrada");
 
+    await ensureRequiredDocuments(id);
+
     const [participants] = await pool.query<any[]>(
       `SELECT cp.*, a.first_name, a.last_name FROM credit_participants cp
        LEFT JOIN associates a ON a.id = cp.associate_id
        WHERE cp.credit_application_id = ?`,
+      [id]
+    );
+    const [documents] = await pool.query<any[]>(
+      `SELECT * FROM credit_application_documents WHERE credit_application_id = ? ORDER BY id ASC`,
       [id]
     );
     const [history] = await pool.query<any[]>(
@@ -69,7 +102,67 @@ applicationsRouter.get(
       [id]
     );
 
-    res.json({ ...application, participants, history });
+    res.json({ ...application, participants, documents, history });
+  })
+);
+
+applicationsRouter.put(
+  "/:id/documents/:documentId",
+  requirePermission("applications:approve"),
+  asyncHandler(async (req, res) => {
+    const { id } = idParam.parse(req.params);
+    const documentId = z.coerce.number().int().positive().parse(req.params.documentId);
+    const { status, notes } = reviewItemSchema.parse(req.body);
+
+    const [appRows] = await pool.query<any[]>(`SELECT status FROM credit_applications WHERE id = ?`, [id]);
+    const app = (appRows as any[])[0];
+    if (!app) throw new HttpError(404, "Solicitud no encontrada");
+    if (!["RADICADA", "EN_REVISION"].includes(app.status)) {
+      throw new HttpError(409, "La solicitud no está en un estado que permita revisar documentos");
+    }
+
+    const [docRows] = await pool.query<any[]>(
+      `SELECT * FROM credit_application_documents WHERE id = ? AND credit_application_id = ?`,
+      [documentId, id]
+    );
+    if ((docRows as any[]).length === 0) throw new HttpError(404, "Documento no encontrado");
+
+    await pool.query(
+      `UPDATE credit_application_documents SET status = ?, notes = ?, reviewed_by = ?, reviewed_at = NOW() WHERE id = ?`,
+      [status, notes ?? null, req.user!.id, documentId]
+    );
+
+    res.json({ id: documentId, status });
+  })
+);
+
+applicationsRouter.put(
+  "/:id/participants/:participantId",
+  requirePermission("applications:approve"),
+  asyncHandler(async (req, res) => {
+    const { id } = idParam.parse(req.params);
+    const participantId = z.coerce.number().int().positive().parse(req.params.participantId);
+    const { status, notes } = reviewItemSchema.parse(req.body);
+
+    const [appRows] = await pool.query<any[]>(`SELECT status FROM credit_applications WHERE id = ?`, [id]);
+    const app = (appRows as any[])[0];
+    if (!app) throw new HttpError(404, "Solicitud no encontrada");
+    if (!["RADICADA", "EN_REVISION"].includes(app.status)) {
+      throw new HttpError(409, "La solicitud no está en un estado que permita revisar participantes");
+    }
+
+    const [partRows] = await pool.query<any[]>(
+      `SELECT * FROM credit_participants WHERE id = ? AND credit_application_id = ?`,
+      [participantId, id]
+    );
+    if ((partRows as any[]).length === 0) throw new HttpError(404, "Participante no encontrado");
+
+    await pool.query(
+      `UPDATE credit_participants SET status = ?, notes = ?, reviewed_by = ?, reviewed_at = NOW() WHERE id = ?`,
+      [status, notes ?? null, req.user!.id, participantId]
+    );
+
+    res.json({ id: participantId, status });
   })
 );
 
@@ -156,6 +249,23 @@ applicationsRouter.post(
     if (!app) throw new HttpError(404, "Solicitud no encontrada");
     if (!["RADICADA", "EN_REVISION"].includes(app.status)) {
       throw new HttpError(409, "La solicitud no puede aprobarse en su estado actual");
+    }
+
+    await ensureRequiredDocuments(id);
+    const [pendingDocs] = await pool.query<any[]>(
+      `SELECT document_type FROM credit_application_documents WHERE credit_application_id = ? AND status != 'APROBADO'`,
+      [id]
+    );
+    const [pendingParticipants] = await pool.query<any[]>(
+      `SELECT role FROM credit_participants WHERE credit_application_id = ? AND status != 'APROBADO'`,
+      [id]
+    );
+    if ((pendingDocs as any[]).length > 0 || (pendingParticipants as any[]).length > 0) {
+      const missing = [
+        ...(pendingDocs as any[]).map((d) => `documento "${d.document_type}"`),
+        ...(pendingParticipants as any[]).map((p) => `participante (${p.role})`)
+      ];
+      throw new HttpError(409, `Faltan por aprobar: ${missing.join(", ")}`);
     }
 
     await pool.query(

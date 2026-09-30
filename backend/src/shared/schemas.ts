@@ -55,6 +55,11 @@ export const creditApplicationSchema = z.object({
   notes: z.string().optional().nullable()
 });
 
+export const reviewItemSchema = z.object({
+  status: z.enum(["PENDIENTE", "APROBADO", "RECHAZADO"]),
+  notes: z.string().max(255).optional().nullable()
+});
+
 export const decisionSchema = z.object({
   approvedAmount: z.coerce.number().positive().optional(),
   approvedRate: z.coerce.number().positive().optional(),

@@ -1,10 +1,26 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { formatCurrency, formatDate, formatPercent } from "../lib/format";
 import { Loading, ErrorView } from "../components/StateViews";
 import { useAuth } from "../context/AuthContext";
+
+interface ReviewItem {
+  id: number;
+  status: "PENDIENTE" | "APROBADO" | "RECHAZADO";
+  notes: string | null;
+}
+
+interface ApplicationDocument extends ReviewItem {
+  document_type: string;
+}
+
+interface ApplicationParticipant extends ReviewItem {
+  role: string;
+  first_name: string | null;
+  last_name: string | null;
+}
 
 interface ApplicationDetail {
   id: number;
@@ -15,8 +31,95 @@ interface ApplicationDetail {
   purpose: string | null;
   expected_disbursement_date: string | null;
   rejection_reason: string | null;
-  participants: Array<{ role: string; first_name: string | null; last_name: string | null }>;
+  participants: ApplicationParticipant[];
+  documents: ApplicationDocument[];
   history: Array<{ from_status: string | null; to_status: string; reason: string | null; created_at: string }>;
+}
+
+const REVIEW_STATUS_STYLES: Record<string, string> = {
+  PENDIENTE: "bg-slate-100 text-slate-500",
+  APROBADO: "bg-emerald-50 text-emerald-700",
+  RECHAZADO: "bg-red-50 text-red-700"
+};
+
+function ReviewRow({
+  label,
+  item,
+  canReview,
+  onSave
+}: {
+  label: string;
+  item: ReviewItem;
+  canReview: boolean;
+  onSave: (status: "APROBADO" | "RECHAZADO", notes: string) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [notes, setNotes] = useState(item.notes ?? "");
+  const [saving, setSaving] = useState(false);
+
+  async function save(status: "APROBADO" | "RECHAZADO") {
+    setSaving(true);
+    try {
+      await onSave(status, notes);
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <li className="rounded-lg border border-slate-100 p-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-sm text-slate-700">{label}</span>
+        <div className="flex items-center gap-2">
+          <span className={`rounded-full px-2 py-0.5 text-xs ${REVIEW_STATUS_STYLES[item.status]}`}>{item.status}</span>
+          {canReview && !editing && (
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+            >
+              Revisar
+            </button>
+          )}
+        </div>
+      </div>
+      {item.notes && !editing && <p className="mt-1 text-xs text-slate-400">Nota: {item.notes}</p>}
+      {editing && (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <input
+            className="min-w-[10rem] flex-1 rounded-md border border-slate-300 px-2 py-1 text-xs"
+            placeholder="Nota (opcional)"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+          />
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => void save("APROBADO")}
+            className="rounded-md bg-emerald-600 px-2 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+          >
+            Aprobar
+          </button>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => void save("RECHAZADO")}
+            className="rounded-md bg-red-600 px-2 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-60"
+          >
+            Rechazar
+          </button>
+          <button
+            type="button"
+            onClick={() => setEditing(false)}
+            className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+          >
+            Cancelar
+          </button>
+        </div>
+      )}
+    </li>
+  );
 }
 
 export default function ApplicationDetailPage() {
@@ -42,6 +145,28 @@ export default function ApplicationDetailPage() {
 
   function invalidate() {
     void queryClient.invalidateQueries({ queryKey: ["application", id] });
+  }
+
+  const reviewDocument = useMutation({
+    mutationFn: ({ documentId, status, notes }: { documentId: number; status: string; notes: string }) =>
+      api.put(`/applications/${id}/documents/${documentId}`, { status, notes: notes || undefined }),
+    onSuccess: invalidate
+  });
+
+  const reviewParticipant = useMutation({
+    mutationFn: ({ participantId, status, notes }: { participantId: number; status: string; notes: string }) =>
+      api.put(`/applications/${id}/participants/${participantId}`, { status, notes: notes || undefined }),
+    onSuccess: invalidate
+  });
+
+  async function startReview() {
+    setActionError(null);
+    try {
+      await api.post(`/applications/${id}/review`, {});
+      invalidate();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Error al iniciar la revisión");
+    }
   }
 
   async function approve() {
@@ -91,6 +216,8 @@ export default function ApplicationDetailPage() {
   if (error) return <ErrorView message={(error as Error).message} />;
   if (!data) return null;
 
+  const canReview = hasPermission("applications:approve") && ["RADICADA", "EN_REVISION"].includes(data.status);
+
   return (
     <div className="max-w-2xl">
       <h1 className="mb-1 text-xl font-semibold text-slate-800">Solicitud #{data.id}</h1>
@@ -108,11 +235,34 @@ export default function ApplicationDetailPage() {
 
       <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
         <h2 className="mb-2 text-sm font-semibold text-slate-700">Participantes</h2>
-        <ul className="space-y-1 text-sm text-slate-600">
-          {data.participants.map((p, idx) => (
-            <li key={idx}>
-              {p.role}: {p.first_name ? `${p.first_name} ${p.last_name}` : "—"}
-            </li>
+        <ul className="space-y-2">
+          {data.participants.map((p) => (
+            <ReviewRow
+              key={p.id}
+              label={`${p.role}: ${p.first_name ? `${p.first_name} ${p.last_name}` : "—"}`}
+              item={p}
+              canReview={canReview}
+              onSave={async (status, notes) => {
+                await reviewParticipant.mutateAsync({ participantId: p.id, status, notes });
+              }}
+            />
+          ))}
+        </ul>
+      </div>
+
+      <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
+        <h2 className="mb-2 text-sm font-semibold text-slate-700">Documentos requeridos</h2>
+        <ul className="space-y-2">
+          {data.documents.map((d) => (
+            <ReviewRow
+              key={d.id}
+              label={d.document_type}
+              item={d}
+              canReview={canReview}
+              onSave={async (status, notes) => {
+                await reviewDocument.mutateAsync({ documentId: d.id, status, notes });
+              }}
+            />
           ))}
         </ul>
       </div>
@@ -126,6 +276,17 @@ export default function ApplicationDetailPage() {
       {hasPermission("applications:approve") && ["RADICADA", "EN_REVISION"].includes(data.status) && (
         <div className="mb-4 space-y-3 rounded-xl border border-slate-200 bg-white p-4">
           <h2 className="text-sm font-semibold text-slate-700">Decisión</h2>
+          {data.status === "RADICADA" && (
+            <button
+              onClick={() => void startReview()}
+              className="rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100"
+            >
+              Poner en revisión
+            </button>
+          )}
+          <p className="text-xs text-slate-400">
+            Para aprobar, todos los documentos y participantes deben quedar en estado APROBADO.
+          </p>
           <button
             onClick={() => void approve()}
             className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700"
