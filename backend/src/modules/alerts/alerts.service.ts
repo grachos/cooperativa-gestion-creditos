@@ -1,5 +1,5 @@
 import { pool } from "../../db/pool.js";
-import { calculateOverdueDays, getMoraBucket, DEFAULT_DELINQUENCY_POLICY } from "../delinquency/delinquency.service.js";
+import { calculateOverdueDays, getMoraBucket, loadDelinquencyPolicy, loadMoraBuckets } from "../delinquency/delinquency.service.js";
 import { broadcastEvent } from "./sse.hub.js";
 
 const BUCKET_PRIORITY: Record<string, "BAJA" | "MEDIA" | "ALTA"> = {
@@ -21,6 +21,7 @@ const BUCKET_PRIORITY: Record<string, "BAJA" | "MEDIA" | "ALTA"> = {
  * programarse como job diario.
  */
 export async function recalculateAlerts(asOf: Date = new Date()) {
+  const [policy, buckets] = await Promise.all([loadDelinquencyPolicy(pool), loadMoraBuckets(pool)]);
   const [installments] = await pool.query<any[]>(
     `SELECT csi.*, c.id as credit_id_ref FROM credit_schedule_installments csi
      JOIN credits c ON c.id = csi.credit_id
@@ -42,7 +43,7 @@ export async function recalculateAlerts(asOf: Date = new Date()) {
       const newStatus =
         inst.status === "PARCIAL" || overdueDays === 0
           ? inst.status
-          : getMoraBucket(overdueDays).code === "CD001"
+          : getMoraBucket(overdueDays, buckets).code === "CD001"
           ? "VENCIDA"
           : "EN_MORA";
       await pool.query(`UPDATE credit_schedule_installments SET overdue_days = ?, status = ? WHERE id = ?`, [
@@ -57,7 +58,7 @@ export async function recalculateAlerts(asOf: Date = new Date()) {
     let priority: "BAJA" | "MEDIA" | "ALTA" = "MEDIA";
     let message = "";
 
-    if (daysToDue === DEFAULT_DELINQUENCY_POLICY.earlyAlertDays && daysToDue > 0) {
+    if (daysToDue === policy.earlyAlertDays && daysToDue > 0) {
       type = "PROXIMO_VENCIMIENTO";
       priority = "BAJA";
       message = `Cuota #${inst.installment_number} vence en ${daysToDue} día(s)`;
@@ -66,7 +67,7 @@ export async function recalculateAlerts(asOf: Date = new Date()) {
       priority = "MEDIA";
       message = `Cuota #${inst.installment_number} vence hoy`;
     } else if (overdueDays > 0) {
-      const bucket = getMoraBucket(overdueDays);
+      const bucket = getMoraBucket(overdueDays, buckets);
       if (bucket.code !== "CD001") {
         type = `MORA_${bucket.code}`;
         priority = BUCKET_PRIORITY[bucket.code] ?? "MEDIA";

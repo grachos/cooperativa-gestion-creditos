@@ -2,7 +2,7 @@ import { Router } from "express";
 import { pool } from "../../db/pool.js";
 import { requireAuth } from "../../middlewares/auth.middleware.js";
 import { asyncHandler, HttpError } from "../../middlewares/error.middleware.js";
-import { MORA_BUCKETS, getMoraBucket } from "../delinquency/delinquency.service.js";
+import { getMoraBucket, loadMoraBuckets } from "../delinquency/delinquency.service.js";
 
 export const reportsRouter = Router();
 reportsRouter.use(requireAuth);
@@ -72,7 +72,8 @@ reportsRouter.get(
        LEFT JOIN associates a ON a.id = c.titular_associate_id
        WHERE csi.status IN ('VENCIDA','EN_MORA') ORDER BY csi.overdue_days DESC`
     );
-    const data = (rows as any[]).map((row) => ({ ...row, moraCode: getMoraBucket(row.overdue_days).code }));
+    const buckets = await loadMoraBuckets(pool);
+    const data = (rows as any[]).map((row) => ({ ...row, moraCode: getMoraBucket(row.overdue_days, buckets).code }));
     res.json({ data });
   })
 );
@@ -93,15 +94,18 @@ reportsRouter.get(
        WHERE csi.status NOT IN ('PAGADA','ANULADA') AND c.status NOT IN ('PAGADO','ANULADO') AND csi.overdue_days > 0`
     );
 
-    const summary = MORA_BUCKETS.filter((b) => b.code !== "CD001").map((b) => ({
-      code: b.code,
-      label: b.label,
-      count: 0,
-      value: 0
-    }));
+    const buckets = await loadMoraBuckets(pool);
+    const summary = buckets
+      .filter((b) => b.code !== "CD001")
+      .map((b) => ({
+        code: b.code,
+        label: b.label,
+        count: 0,
+        value: 0
+      }));
 
     for (const row of rows as any[]) {
-      const bucket = getMoraBucket(row.overdue_days);
+      const bucket = getMoraBucket(row.overdue_days, buckets);
       const entry = summary.find((s) => s.code === bucket.code);
       if (!entry) continue;
       entry.count += 1;

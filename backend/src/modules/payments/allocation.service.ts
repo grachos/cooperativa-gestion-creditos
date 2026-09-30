@@ -1,11 +1,6 @@
 import type { PoolConnection } from "../../db/pool.js";
 import { round2 } from "../../utils/money.js";
-import {
-  calculateOverdueDays,
-  calculateLateFee,
-  getMoraBucket,
-  DEFAULT_DELINQUENCY_POLICY
-} from "../delinquency/delinquency.service.js";
+import { calculateOverdueDays, calculateLateFee, getMoraBucket, loadDelinquencyPolicy, loadMoraBuckets } from "../delinquency/delinquency.service.js";
 
 export interface AllocationLine {
   concept: "GASTOS" | "MORA" | "INTERES" | "CAPITAL";
@@ -14,16 +9,31 @@ export interface AllocationLine {
   adjustmentId?: number;
 }
 
+type AllocationConcept = "GASTOS" | "MORA" | "INTERES" | "CAPITAL";
+
 /**
  * Orden de imputación real: gastos pendientes (ajustes tipo GASTO_NOTIFICACION
  * u OTRO), luego mora, interés y capital de la cuota más antigua. Se
  * confirmó contra el histórico de observaciones de pago de la cooperativa:
  * "SALDA $91.800 CUOTA 4 + $100.000 DE GASTOS DE NOTIFICACIÓN" — el gasto se
- * cobra junto con la cuota, no después del capital. Antes, el esquema tenía
- * el concepto GASTOS en `payment_allocations` pero nunca se usaba.
- * Configurable a futuro vía tabla `parameters` (pendiente de confirmación).
+ * cobra junto con la cuota, no después del capital. Ahora configurable vía
+ * el parámetro `orden_aplicacion_pago`. GASTOS es un cargo a nivel de
+ * crédito (no de una cuota puntual), así que su posición en el arreglo solo
+ * determina si se aplica ANTES o DESPUÉS del barrido de cuotas — MORA,
+ * INTERES y CAPITAL sí se aplican en el orden exacto indicado dentro de
+ * cada cuota.
  */
-const INSTALLMENT_ALLOCATION_ORDER: Array<"MORA" | "INTERES" | "CAPITAL"> = ["MORA", "INTERES", "CAPITAL"];
+const DEFAULT_ALLOCATION_ORDER: AllocationConcept[] = ["GASTOS", "MORA", "INTERES", "CAPITAL"];
+
+async function loadAllocationOrder(conn: PoolConnection): Promise<AllocationConcept[]> {
+  const [rows] = await conn.query<any[]>(`SELECT value FROM parameters WHERE \`key\` = 'orden_aplicacion_pago'`);
+  const value = (rows as any[])[0]?.value;
+  const isValid =
+    Array.isArray(value) &&
+    value.length === DEFAULT_ALLOCATION_ORDER.length &&
+    DEFAULT_ALLOCATION_ORDER.every((c) => value.includes(c));
+  return isValid ? (value as AllocationConcept[]) : DEFAULT_ALLOCATION_ORDER;
+}
 
 async function allocateOutstandingGastos(
   conn: PoolConnection,
@@ -59,8 +69,21 @@ export async function allocatePayment(
   amount: number,
   asOf: Date
 ): Promise<AllocationLine[]> {
+  const [order, policy, buckets] = await Promise.all([
+    loadAllocationOrder(conn),
+    loadDelinquencyPolicy(conn),
+    loadMoraBuckets(conn)
+  ]);
+  const installmentOrder = order.filter((c): c is "MORA" | "INTERES" | "CAPITAL" => c !== "GASTOS");
+  const gastosIndex = order.indexOf("GASTOS");
+  const firstInstallmentIndex = Math.min(...installmentOrder.map((c) => order.indexOf(c)));
+  const gastosFirst = gastosIndex === -1 || gastosIndex < firstInstallmentIndex;
+
   const lines: AllocationLine[] = [];
-  let remaining = await allocateOutstandingGastos(conn, creditId, amount, lines);
+  let remaining = amount;
+  if (gastosFirst) {
+    remaining = await allocateOutstandingGastos(conn, creditId, remaining, lines);
+  }
 
   const [installments] = await conn.query<any[]>(
     `SELECT * FROM credit_schedule_installments
@@ -89,7 +112,7 @@ export async function allocatePayment(
     const outstandingPrincipal = round2(inst.principal_due - inst.principal_paid);
     const outstandingInterest = round2(inst.interest_due - inst.interest_paid);
     const { result: lateFeeDue } = calculateLateFee({
-      policy: DEFAULT_DELINQUENCY_POLICY,
+      policy,
       overdueDays,
       principalOrInstallmentBase: outstandingPrincipal
     });
@@ -105,7 +128,7 @@ export async function allocatePayment(
     let interestPaid = 0;
     let lateFeePaid = 0;
 
-    for (const concept of INSTALLMENT_ALLOCATION_ORDER) {
+    for (const concept of installmentOrder) {
       if (remaining <= 0) break;
       const due = outstanding[concept] ?? 0;
       if (due <= 0) continue;
@@ -130,7 +153,7 @@ export async function allocatePayment(
     let status = inst.status;
     if (totalOutstanding <= 0) status = "PAGADA";
     else if (newPrincipalPaid > 0 || newInterestPaid > 0 || newLateFeePaid > 0) status = "PARCIAL";
-    else if (overdueDays > 0) status = getMoraBucket(overdueDays).code === "CD001" ? "VENCIDA" : "EN_MORA";
+    else if (overdueDays > 0) status = getMoraBucket(overdueDays, buckets).code === "CD001" ? "VENCIDA" : "EN_MORA";
 
     await conn.query(
       `UPDATE credit_schedule_installments
@@ -146,6 +169,10 @@ export async function allocatePayment(
         inst.id
       ]
     );
+  }
+
+  if (!gastosFirst) {
+    await allocateOutstandingGastos(conn, creditId, remaining, lines);
   }
 
   return lines;

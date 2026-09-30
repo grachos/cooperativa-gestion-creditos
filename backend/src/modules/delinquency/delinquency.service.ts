@@ -1,4 +1,5 @@
 import { round2 } from "../../utils/money.js";
+import type { PoolLike } from "../../db/pool.js";
 
 export interface DelinquencyPolicy {
   version: string;
@@ -29,8 +30,34 @@ export const MORA_BUCKETS = [
   { code: "CM180", label: "Mora 180+", minDays: 180, maxDays: Infinity }
 ] as const;
 
-export function getMoraBucket(overdueDays: number): (typeof MORA_BUCKETS)[number] {
-  return MORA_BUCKETS.find((b) => overdueDays >= b.minDays && overdueDays <= b.maxDays) ?? MORA_BUCKETS[0];
+export interface MoraBucket {
+  code: string;
+  label: string;
+  minDays: number;
+  maxDays: number;
+}
+
+export function getMoraBucket(overdueDays: number, buckets: MoraBucket[] = MORA_BUCKETS as unknown as MoraBucket[]): MoraBucket {
+  return buckets.find((b) => overdueDays >= b.minDays && overdueDays <= b.maxDays) ?? buckets[0] ?? (MORA_BUCKETS[0] as MoraBucket);
+}
+
+/**
+ * Lee el parámetro `rangos_mora` (ver Parámetros) en vez de los MORA_BUCKETS
+ * fijos de arriba, para que editarlo desde la UI de verdad cambie la
+ * clasificación de mora. JSON.stringify serializa Infinity como null (el
+ * último bucket no tiene tope superior), así que se restaura aquí.
+ */
+export async function loadMoraBuckets(db: PoolLike): Promise<MoraBucket[]> {
+  const [rows] = await db.query<any[]>(`SELECT value FROM parameters WHERE \`key\` = 'rangos_mora'`);
+  const value = (rows as any[])[0]?.value;
+  if (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every((b) => b && typeof b.code === "string" && typeof b.minDays === "number")
+  ) {
+    return value.map((b) => ({ ...b, maxDays: b.maxDays === null || b.maxDays === undefined ? Infinity : b.maxDays }));
+  }
+  return MORA_BUCKETS as unknown as MoraBucket[];
 }
 
 /**
@@ -56,6 +83,16 @@ export const DEFAULT_DELINQUENCY_POLICY: DelinquencyPolicy = {
   cap: null,
   earlyAlertDays: 3 // alerta temprana 3 días antes del vencimiento
 };
+
+/** Lee el parámetro `politica_mora` en vez de DEFAULT_DELINQUENCY_POLICY. */
+export async function loadDelinquencyPolicy(db: PoolLike): Promise<DelinquencyPolicy> {
+  const [rows] = await db.query<any[]>(`SELECT value FROM parameters WHERE \`key\` = 'politica_mora'`);
+  const value = (rows as any[])[0]?.value;
+  if (value && typeof value === "object" && typeof value.rateOrValue === "number" && typeof value.graceDays === "number") {
+    return { ...DEFAULT_DELINQUENCY_POLICY, ...value };
+  }
+  return DEFAULT_DELINQUENCY_POLICY;
+}
 
 export function calculateOverdueDays(dueDate: Date, asOf: Date): number {
   const ms = asOf.getTime() - dueDate.getTime();

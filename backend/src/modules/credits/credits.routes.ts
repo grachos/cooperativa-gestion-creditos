@@ -7,7 +7,7 @@ import { buildAmortizationSchedule } from "./schedule.service.js";
 import { recordAudit } from "../audit/audit.service.js";
 import { enqueueIntegrationEvent } from "../integration/integration.service.js";
 import { broadcastEvent } from "../alerts/sse.hub.js";
-import { DEFAULT_DELINQUENCY_POLICY, getMoraBucket } from "../delinquency/delinquency.service.js";
+import { getMoraBucket, loadDelinquencyPolicy, loadMoraBuckets } from "../delinquency/delinquency.service.js";
 import { round2 } from "../../utils/money.js";
 
 export const creditsRouter = Router();
@@ -38,6 +38,7 @@ creditsRouter.post(
       if (app.status !== "APROBADA") throw new HttpError(409, "La solicitud debe estar aprobada para desembolsar");
 
       const creditNumber = await nextCreditNumber();
+      const delinquencyPolicy = await loadDelinquencyPolicy(conn);
 
       const [result] = await conn.query<any>(
         `INSERT INTO credits
@@ -57,7 +58,7 @@ creditsRouter.post(
           app.term_value,
           disbursementDate,
           firstInstallmentDate,
-          JSON.stringify(DEFAULT_DELINQUENCY_POLICY),
+          JSON.stringify(delinquencyPolicy),
           JSON.stringify({ rateType: app.rate_type, termValue: app.term_value }),
           funderName ?? null,
           funderRatePercent ?? null,
@@ -139,8 +140,9 @@ creditsRouter.get(
       [...args, pageSize, offset]
     );
     const [countRows] = await pool.query<any[]>(`SELECT COUNT(*) as total FROM credits c ${where}`, args);
+    const buckets = await loadMoraBuckets(pool);
     const data = (rows as any[]).map((row) => {
-      const bucket = getMoraBucket(Number(row.max_overdue_days ?? 0));
+      const bucket = getMoraBucket(Number(row.max_overdue_days ?? 0), buckets);
       return { ...row, moraCode: row.status === "PAGADO" ? null : bucket.code, moraLabel: row.status === "PAGADO" ? null : bucket.label };
     });
     res.json({ data, page, pageSize, total: (countRows as any[])[0].total });
@@ -197,7 +199,8 @@ creditsRouter.get(
     const maxOverdueDays = (schedule as any[])
       .filter((i) => !["PAGADA", "ANULADA"].includes(i.status))
       .reduce((max, i) => Math.max(max, i.overdue_days), 0);
-    const bucket = getMoraBucket(maxOverdueDays);
+    const buckets = await loadMoraBuckets(pool);
+    const bucket = getMoraBucket(maxOverdueDays, buckets);
     const moraCode = credit.status === "PAGADO" ? null : bucket.code;
     const moraLabel = credit.status === "PAGADO" ? null : bucket.label;
 
