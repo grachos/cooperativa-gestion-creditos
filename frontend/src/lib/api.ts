@@ -49,7 +49,18 @@ export async function apiFetch<T>(
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: "Error desconocido" }));
-    throw new Error(body.error ?? "Error en la solicitud");
+    let message = body.error ?? "Error en la solicitud";
+    if (Array.isArray(body.details) && body.details.length > 0) {
+      const details = body.details
+        .map((d: { path?: unknown[]; message?: string }) => {
+          const field = Array.isArray(d.path) ? d.path.join(".") : "";
+          return field ? `${field}: ${d.message}` : d.message;
+        })
+        .filter(Boolean)
+        .join(" · ");
+      if (details) message = `${message} (${details})`;
+    }
+    throw new Error(message);
   }
 
   if (res.status === 204) return undefined as T;

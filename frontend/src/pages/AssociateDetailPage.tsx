@@ -6,6 +6,7 @@ import { formatCurrency, formatDate } from "../lib/format";
 import { Loading, ErrorView } from "../components/StateViews";
 import { useAuth } from "../context/AuthContext";
 import { useParameterList } from "../hooks/useParameterList";
+import { phoneError, emailError } from "../lib/validators";
 
 interface AssociateDetail {
   id: number;
@@ -62,6 +63,14 @@ function EditAssociateForm({ data, onDone }: { data: AssociateDetail; onDone: ()
     notes: data.notes ?? ""
   });
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string | null>>({});
+
+  function checkPhone(name: "phone" | "employerPhone", value: string) {
+    setFieldErrors((prev) => ({ ...prev, [name]: phoneError(value) }));
+  }
+  function checkEmail(name: "email" | "employerEmail", value: string) {
+    setFieldErrors((prev) => ({ ...prev, [name]: emailError(value) }));
+  }
 
   const update = useMutation({
     mutationFn: () =>
@@ -91,6 +100,10 @@ function EditAssociateForm({ data, onDone }: { data: AssociateDetail; onDone: ()
     <form
       onSubmit={(e) => {
         e.preventDefault();
+        if (Object.values(fieldErrors).some(Boolean)) {
+          setError("Corrija los campos marcados antes de guardar.");
+          return;
+        }
         update.mutate();
       }}
       className="mb-4 space-y-4 rounded-xl border border-slate-200 bg-white p-4"
@@ -139,21 +152,29 @@ function EditAssociateForm({ data, onDone }: { data: AssociateDetail; onDone: ()
             value={form.birthDate}
             onChange={(e) => setForm({ ...form, birthDate: e.target.value })}
           />
-          <input
-            required
-            placeholder="Teléfono"
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-            value={form.phone}
-            onChange={(e) => setForm({ ...form, phone: e.target.value })}
-          />
-          <input
-            required
-            type="email"
-            placeholder="Correo"
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-            value={form.email}
-            onChange={(e) => setForm({ ...form, email: e.target.value })}
-          />
+          <div>
+            <input
+              required
+              placeholder="Teléfono"
+              className={`w-full rounded-md border px-3 py-2 text-sm ${fieldErrors.phone ? "border-red-400" : "border-slate-300"}`}
+              value={form.phone}
+              onChange={(e) => setForm({ ...form, phone: e.target.value })}
+              onBlur={(e) => checkPhone("phone", e.target.value)}
+            />
+            {fieldErrors.phone && <p className="mt-1 text-xs text-red-600">{fieldErrors.phone}</p>}
+          </div>
+          <div>
+            <input
+              required
+              type="email"
+              placeholder="Correo"
+              className={`w-full rounded-md border px-3 py-2 text-sm ${fieldErrors.email ? "border-red-400" : "border-slate-300"}`}
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              onBlur={(e) => checkEmail("email", e.target.value)}
+            />
+            {fieldErrors.email && <p className="mt-1 text-xs text-red-600">{fieldErrors.email}</p>}
+          </div>
         </div>
       </div>
 
@@ -204,7 +225,8 @@ function EditAssociateForm({ data, onDone }: { data: AssociateDetail; onDone: ()
               type="radio"
               name="isEmployed"
               checked={!form.isEmployed}
-              onChange={() =>
+              onChange={() => {
+                setFieldErrors((prev) => ({ ...prev, employerPhone: null, employerEmail: null }));
                 setForm({
                   ...form,
                   isEmployed: false,
@@ -212,8 +234,8 @@ function EditAssociateForm({ data, onDone }: { data: AssociateDetail; onDone: ()
                   employerAddress: "",
                   employerPhone: "",
                   employerEmail: ""
-                })
-              }
+                });
+              }}
             />
             No
           </label>
@@ -238,21 +260,33 @@ function EditAssociateForm({ data, onDone }: { data: AssociateDetail; onDone: ()
               value={form.employerAddress}
               onChange={(e) => setForm({ ...form, employerAddress: e.target.value })}
             />
-            <input
-              required
-              placeholder="Teléfono de la empresa"
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-              value={form.employerPhone}
-              onChange={(e) => setForm({ ...form, employerPhone: e.target.value })}
-            />
-            <input
-              required
-              type="email"
-              placeholder="Correo de la empresa"
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-              value={form.employerEmail}
-              onChange={(e) => setForm({ ...form, employerEmail: e.target.value })}
-            />
+            <div>
+              <input
+                required
+                placeholder="Teléfono de la empresa"
+                className={`w-full rounded-md border px-3 py-2 text-sm ${
+                  fieldErrors.employerPhone ? "border-red-400" : "border-slate-300"
+                }`}
+                value={form.employerPhone}
+                onChange={(e) => setForm({ ...form, employerPhone: e.target.value })}
+                onBlur={(e) => checkPhone("employerPhone", e.target.value)}
+              />
+              {fieldErrors.employerPhone && <p className="mt-1 text-xs text-red-600">{fieldErrors.employerPhone}</p>}
+            </div>
+            <div>
+              <input
+                required
+                type="email"
+                placeholder="Correo de la empresa"
+                className={`w-full rounded-md border px-3 py-2 text-sm ${
+                  fieldErrors.employerEmail ? "border-red-400" : "border-slate-300"
+                }`}
+                value={form.employerEmail}
+                onChange={(e) => setForm({ ...form, employerEmail: e.target.value })}
+                onBlur={(e) => checkEmail("employerEmail", e.target.value)}
+              />
+              {fieldErrors.employerEmail && <p className="mt-1 text-xs text-red-600">{fieldErrors.employerEmail}</p>}
+            </div>
           </div>
         </div>
       )}

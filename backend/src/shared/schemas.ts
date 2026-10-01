@@ -12,9 +12,9 @@ export const associateSchema = z.object({
   idNumber: z.string().min(4).max(40),
   firstName: z.string().min(1).max(100),
   lastName: z.string().min(1).max(100),
-  birthDate: z.string().date(),
-  phone: z.string().trim().min(1).max(40),
-  email: z.string().email(),
+  birthDate: z.string().date("Fecha de nacimiento inválida"),
+  phone: z.string().regex(/^\d{10}$/, "El teléfono debe tener 10 dígitos numéricos"),
+  email: z.string().email("Correo electrónico inválido"),
   address: z.string().max(255).optional().nullable(),
   municipality: z.string().max(100).optional().nullable(),
   department: z.string().max(100).optional().nullable(),
@@ -23,8 +23,8 @@ export const associateSchema = z.object({
   isEmployed: z.boolean(),
   employerName: z.string().max(160).optional().nullable(),
   employerAddress: z.string().max(255).optional().nullable(),
-  employerPhone: z.string().max(40).optional().nullable(),
-  employerEmail: z.string().email().max(160).optional().nullable(),
+  employerPhone: z.string().regex(/^\d{10}$/, "El teléfono debe tener 10 dígitos numéricos").optional().nullable(),
+  employerEmail: z.string().email("Correo electrónico inválido").max(160).optional().nullable(),
   notes: z.string().optional().nullable(),
   dataConsent: z.boolean().optional()
 });
