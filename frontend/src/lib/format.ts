@@ -14,3 +14,9 @@ export function formatPercent(value: number | string): string {
   const n = typeof value === "string" ? Number(value) : value;
   return `${n.toFixed(2)}%`;
 }
+
+/** Formatea un número con separador de miles (es-CO), sin símbolo de moneda
+ * — para mostrar en un input mientras se escribe. */
+export function formatThousands(value: number): string {
+  return new Intl.NumberFormat("es-CO").format(value);
+}

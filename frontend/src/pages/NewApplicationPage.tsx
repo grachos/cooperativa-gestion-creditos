@@ -2,6 +2,8 @@ import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
+import { formatThousands } from "../lib/format";
+import { useDefaultMonthlyRate } from "../hooks/useParameterList";
 
 interface AssociateOption {
   id: number;
@@ -15,13 +17,13 @@ export default function NewApplicationPage() {
     queryKey: ["associates", "picker"],
     queryFn: () => api.get<{ data: AssociateOption[] }>("/associates?pageSize=100&selectable=true")
   });
+  const defaultMonthlyRate = useDefaultMonthlyRate();
 
   const [form, setForm] = useState({
     titularAssociateId: "",
     coDebtorAssociateIds: [] as string[],
     requestedAmount: "",
     termValue: "12",
-    interestRate: "4",
     purpose: ""
   });
   const [error, setError] = useState<string | null>(null);
@@ -30,6 +32,10 @@ export default function NewApplicationPage() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    if (!form.requestedAmount || Number(form.requestedAmount) <= 0) {
+      setError("Indique un monto solicitado válido.");
+      return;
+    }
     setSubmitting(true);
     try {
       const result = await api.post<{ id: number }>("/applications", {
@@ -37,7 +43,7 @@ export default function NewApplicationPage() {
         coDebtorAssociateIds: form.coDebtorAssociateIds.filter(Boolean).map(Number),
         requestedAmount: Number(form.requestedAmount),
         termValue: Number(form.termValue),
-        interestRate: Number(form.interestRate),
+        interestRate: defaultMonthlyRate,
         purpose: form.purpose || undefined
       });
       navigate(`/solicitudes/${result.id}`);
@@ -132,14 +138,19 @@ export default function NewApplicationPage() {
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">Monto solicitado</label>
-            <input
-              type="number"
-              required
-              min={1}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-              value={form.requestedAmount}
-              onChange={(e) => setForm({ ...form, requestedAmount: e.target.value })}
-            />
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">
+                $
+              </span>
+              <input
+                type="text"
+                inputMode="numeric"
+                required
+                className="w-full rounded-md border border-slate-300 py-2 pl-7 pr-3 text-sm"
+                value={form.requestedAmount ? formatThousands(Number(form.requestedAmount)) : ""}
+                onChange={(e) => setForm({ ...form, requestedAmount: e.target.value.replace(/\D/g, "") })}
+              />
+            </div>
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">Plazo (meses)</label>
@@ -154,18 +165,13 @@ export default function NewApplicationPage() {
           </div>
         </div>
 
-        <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">
-            Tasa mensual fija (%) — interés simple sobre el capital, igual en cada cuota
-          </label>
-          <input
-            type="number"
-            step="0.01"
-            required
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-            value={form.interestRate}
-            onChange={(e) => setForm({ ...form, interestRate: e.target.value })}
-          />
+        <div className="rounded-md bg-slate-50 px-3 py-2">
+          <p className="text-sm font-medium text-slate-700">
+            Tasa mensual fija: {defaultMonthlyRate.toFixed(2)}% — interés simple sobre el capital, igual en cada cuota
+          </p>
+          <p className="text-xs text-slate-400">
+            Definida en Parámetros → modelo_interes. Se aplica automáticamente, no es editable aquí.
+          </p>
         </div>
 
         <div>
