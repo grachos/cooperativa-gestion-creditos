@@ -6,7 +6,7 @@ import { api } from "../lib/api";
 import { Loading, ErrorView, EmptyView } from "../components/StateViews";
 import { useAuth } from "../context/AuthContext";
 import { useParameterList } from "../hooks/useParameterList";
-import { phoneError, emailError } from "../lib/validators";
+import { phoneError, emailError, birthDateError } from "../lib/validators";
 
 const DEFAULT_ID_TYPES = ["CC", "CE", "TI", "PA", "NIT"];
 
@@ -176,6 +176,9 @@ function NewAssociateForm({ onCreated }: { onCreated: () => void }) {
   function checkEmail(name: "email" | "employerEmail", value: string) {
     setFieldErrors((prev) => ({ ...prev, [name]: emailError(value) }));
   }
+  function checkBirthDate(value: string) {
+    setFieldErrors((prev) => ({ ...prev, birthDate: birthDateError(value) }));
+  }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -251,10 +254,14 @@ function NewAssociateForm({ onCreated }: { onCreated: () => void }) {
             <input
               required
               type="date"
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              className={`w-full rounded-md border px-3 py-2 text-sm ${
+                fieldErrors.birthDate ? "border-red-400" : "border-slate-300"
+              }`}
               value={form.birthDate}
               onChange={(e) => setForm({ ...form, birthDate: e.target.value })}
+              onBlur={(e) => checkBirthDate(e.target.value)}
             />
+            {fieldErrors.birthDate && <p className="mt-1 text-xs text-red-600">{fieldErrors.birthDate}</p>}
           </div>
           <div>
             <input

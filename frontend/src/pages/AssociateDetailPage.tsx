@@ -6,7 +6,7 @@ import { formatCurrency, formatDate } from "../lib/format";
 import { Loading, ErrorView } from "../components/StateViews";
 import { useAuth } from "../context/AuthContext";
 import { useParameterList } from "../hooks/useParameterList";
-import { phoneError, emailError } from "../lib/validators";
+import { phoneError, emailError, birthDateError } from "../lib/validators";
 
 interface AssociateDetail {
   id: number;
@@ -70,6 +70,9 @@ function EditAssociateForm({ data, onDone }: { data: AssociateDetail; onDone: ()
   }
   function checkEmail(name: "email" | "employerEmail", value: string) {
     setFieldErrors((prev) => ({ ...prev, [name]: emailError(value) }));
+  }
+  function checkBirthDate(value: string) {
+    setFieldErrors((prev) => ({ ...prev, birthDate: birthDateError(value) }));
   }
 
   const update = useMutation({
@@ -145,13 +148,19 @@ function EditAssociateForm({ data, onDone }: { data: AssociateDetail; onDone: ()
             value={form.lastName}
             onChange={(e) => setForm({ ...form, lastName: e.target.value })}
           />
-          <input
-            required
-            type="date"
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-            value={form.birthDate}
-            onChange={(e) => setForm({ ...form, birthDate: e.target.value })}
-          />
+          <div>
+            <input
+              required
+              type="date"
+              className={`w-full rounded-md border px-3 py-2 text-sm ${
+                fieldErrors.birthDate ? "border-red-400" : "border-slate-300"
+              }`}
+              value={form.birthDate}
+              onChange={(e) => setForm({ ...form, birthDate: e.target.value })}
+              onBlur={(e) => checkBirthDate(e.target.value)}
+            />
+            {fieldErrors.birthDate && <p className="mt-1 text-xs text-red-600">{fieldErrors.birthDate}</p>}
+          </div>
           <div>
             <input
               required

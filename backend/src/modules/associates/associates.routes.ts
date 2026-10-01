@@ -4,6 +4,7 @@ import { associateSchema, associateStatusSchema, idParam, paginationQuery } from
 import { asyncHandler, HttpError } from "../../middlewares/error.middleware.js";
 import { requireAuth, requirePermission } from "../../middlewares/auth.middleware.js";
 import { recordAudit } from "../audit/audit.service.js";
+import { isAdult } from "../../utils/age.js";
 
 export const associatesRouter = Router();
 associatesRouter.use(requireAuth);
@@ -74,6 +75,9 @@ associatesRouter.post(
   asyncHandler(async (req, res) => {
     const data = associateSchema.parse(req.body);
 
+    if (!isAdult(data.birthDate)) {
+      throw new HttpError(400, "El asociado debe ser mayor de edad (18 años o más) para registrarse");
+    }
     if (data.isEmployed && (!data.employerName || !data.employerAddress || !data.employerPhone || !data.employerEmail)) {
       throw new HttpError(400, "Debe indicar los datos de la empresa cuando el asociado es empleado");
     }
@@ -137,6 +141,10 @@ associatesRouter.put(
     const [rows] = await pool.query<any[]>(`SELECT * FROM associates WHERE id = ?`, [id]);
     const before = (rows as any[])[0];
     if (!before) throw new HttpError(404, "Asociado no encontrado");
+
+    if (data.birthDate !== undefined && !isAdult(data.birthDate)) {
+      throw new HttpError(400, "El asociado debe ser mayor de edad (18 años o más) para registrarse");
+    }
 
     const effectiveEmployed = data.isEmployed ?? before.is_employed;
     if (effectiveEmployed) {
