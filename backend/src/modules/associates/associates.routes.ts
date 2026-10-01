@@ -74,6 +74,10 @@ associatesRouter.post(
   asyncHandler(async (req, res) => {
     const data = associateSchema.parse(req.body);
 
+    if (data.isEmployed && (!data.employerName || !data.employerAddress || !data.employerPhone || !data.employerEmail)) {
+      throw new HttpError(400, "Debe indicar los datos de la empresa cuando el asociado es empleado");
+    }
+
     const [existing] = await pool.query<any[]>(
       `SELECT id FROM associates WHERE id_type = ? AND id_number = ?`,
       [data.idType, data.idNumber]
@@ -84,25 +88,26 @@ associatesRouter.post(
 
     const [result] = await pool.query<any>(
       `INSERT INTO associates
-        (id_type, id_number, first_name, last_name, birth_date, phone, email, address, municipality, department, country, income_info, employer_name, employer_address, employer_phone, employer_email, notes, data_consent, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (id_type, id_number, first_name, last_name, birth_date, phone, email, address, municipality, department, country, income_info, is_employed, employer_name, employer_address, employer_phone, employer_email, notes, data_consent, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         data.idType,
         data.idNumber,
         data.firstName,
         data.lastName,
-        data.birthDate ?? null,
-        data.phone ?? null,
-        data.email ?? null,
+        data.birthDate,
+        data.phone,
+        data.email,
         data.address ?? null,
         data.municipality ?? null,
         data.department ?? null,
         data.country ?? "Colombia",
         data.incomeInfo ?? null,
-        data.employerName ?? null,
-        data.employerAddress ?? null,
-        data.employerPhone ?? null,
-        data.employerEmail ?? null,
+        data.isEmployed,
+        data.isEmployed ? data.employerName : null,
+        data.isEmployed ? data.employerAddress : null,
+        data.isEmployed ? data.employerPhone : null,
+        data.isEmployed ? data.employerEmail : null,
         data.notes ?? null,
         data.dataConsent ?? false,
         req.user!.id
@@ -133,6 +138,22 @@ associatesRouter.put(
     const before = (rows as any[])[0];
     if (!before) throw new HttpError(404, "Asociado no encontrado");
 
+    const effectiveEmployed = data.isEmployed ?? before.is_employed;
+    if (effectiveEmployed) {
+      const employerName = data.employerName !== undefined ? data.employerName : before.employer_name;
+      const employerAddress = data.employerAddress !== undefined ? data.employerAddress : before.employer_address;
+      const employerPhone = data.employerPhone !== undefined ? data.employerPhone : before.employer_phone;
+      const employerEmail = data.employerEmail !== undefined ? data.employerEmail : before.employer_email;
+      if (!employerName || !employerAddress || !employerPhone || !employerEmail) {
+        throw new HttpError(400, "Debe indicar los datos de la empresa cuando el asociado es empleado");
+      }
+    } else if (data.isEmployed === false) {
+      data.employerName = null;
+      data.employerAddress = null;
+      data.employerPhone = null;
+      data.employerEmail = null;
+    }
+
     const fields = Object.entries(data).filter(([, v]) => v !== undefined);
     if (fields.length === 0) return res.json({ id });
 
@@ -143,6 +164,7 @@ associatesRouter.put(
       lastName: "last_name",
       birthDate: "birth_date",
       incomeInfo: "income_info",
+      isEmployed: "is_employed",
       employerName: "employer_name",
       employerAddress: "employer_address",
       employerPhone: "employer_phone",

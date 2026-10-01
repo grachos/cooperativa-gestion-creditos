@@ -20,6 +20,7 @@ interface AssociateDetail {
   municipality: string | null;
   department: string | null;
   income_info: string | null;
+  is_employed: boolean;
   employer_name: string | null;
   employer_address: string | null;
   employer_phone: string | null;
@@ -53,6 +54,7 @@ function EditAssociateForm({ data, onDone }: { data: AssociateDetail; onDone: ()
     municipality: data.municipality ?? "",
     department: data.department ?? "",
     incomeInfo: data.income_info ?? "",
+    isEmployed: data.is_employed,
     employerName: data.employer_name ?? "",
     employerAddress: data.employer_address ?? "",
     employerPhone: data.employer_phone ?? "",
@@ -72,10 +74,10 @@ function EditAssociateForm({ data, onDone }: { data: AssociateDetail; onDone: ()
         municipality: form.municipality || undefined,
         department: form.department || undefined,
         incomeInfo: form.incomeInfo || undefined,
-        employerName: form.employerName || undefined,
-        employerAddress: form.employerAddress || undefined,
-        employerPhone: form.employerPhone || undefined,
-        employerEmail: form.employerEmail || undefined,
+        employerName: form.isEmployed ? form.employerName || undefined : null,
+        employerAddress: form.isEmployed ? form.employerAddress || undefined : null,
+        employerPhone: form.isEmployed ? form.employerPhone || undefined : null,
+        employerEmail: form.isEmployed ? form.employerEmail || undefined : null,
         notes: form.notes || undefined
       }),
     onSuccess: () => {
@@ -131,18 +133,22 @@ function EditAssociateForm({ data, onDone }: { data: AssociateDetail; onDone: ()
             onChange={(e) => setForm({ ...form, lastName: e.target.value })}
           />
           <input
+            required
             type="date"
             className="rounded-md border border-slate-300 px-3 py-2 text-sm"
             value={form.birthDate}
             onChange={(e) => setForm({ ...form, birthDate: e.target.value })}
           />
           <input
+            required
             placeholder="Teléfono"
             className="rounded-md border border-slate-300 px-3 py-2 text-sm"
             value={form.phone}
             onChange={(e) => setForm({ ...form, phone: e.target.value })}
           />
           <input
+            required
+            type="email"
             placeholder="Correo"
             className="rounded-md border border-slate-300 px-3 py-2 text-sm"
             value={form.email}
@@ -182,34 +188,74 @@ function EditAssociateForm({ data, onDone }: { data: AssociateDetail; onDone: ()
       </div>
 
       <div>
-        <p className="mb-2 text-xs font-semibold uppercase text-slate-400">Empresa donde trabaja</p>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <input
-            placeholder="Empresa"
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-            value={form.employerName}
-            onChange={(e) => setForm({ ...form, employerName: e.target.value })}
-          />
-          <input
-            placeholder="Dirección de la empresa"
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-            value={form.employerAddress}
-            onChange={(e) => setForm({ ...form, employerAddress: e.target.value })}
-          />
-          <input
-            placeholder="Teléfono de la empresa"
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-            value={form.employerPhone}
-            onChange={(e) => setForm({ ...form, employerPhone: e.target.value })}
-          />
-          <input
-            placeholder="Correo de la empresa"
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-            value={form.employerEmail}
-            onChange={(e) => setForm({ ...form, employerEmail: e.target.value })}
-          />
+        <p className="mb-2 text-xs font-semibold uppercase text-slate-400">¿Es empleado?</p>
+        <div className="flex gap-4">
+          <label className="flex items-center gap-2 text-sm text-slate-600">
+            <input
+              type="radio"
+              name="isEmployed"
+              checked={form.isEmployed}
+              onChange={() => setForm({ ...form, isEmployed: true })}
+            />
+            Sí
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-600">
+            <input
+              type="radio"
+              name="isEmployed"
+              checked={!form.isEmployed}
+              onChange={() =>
+                setForm({
+                  ...form,
+                  isEmployed: false,
+                  employerName: "",
+                  employerAddress: "",
+                  employerPhone: "",
+                  employerEmail: ""
+                })
+              }
+            />
+            No
+          </label>
         </div>
       </div>
+
+      {form.isEmployed && (
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase text-slate-400">Empresa donde trabaja</p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <input
+              required
+              placeholder="Empresa"
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+              value={form.employerName}
+              onChange={(e) => setForm({ ...form, employerName: e.target.value })}
+            />
+            <input
+              required
+              placeholder="Dirección de la empresa"
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+              value={form.employerAddress}
+              onChange={(e) => setForm({ ...form, employerAddress: e.target.value })}
+            />
+            <input
+              required
+              placeholder="Teléfono de la empresa"
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+              value={form.employerPhone}
+              onChange={(e) => setForm({ ...form, employerPhone: e.target.value })}
+            />
+            <input
+              required
+              type="email"
+              placeholder="Correo de la empresa"
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+              value={form.employerEmail}
+              onChange={(e) => setForm({ ...form, employerEmail: e.target.value })}
+            />
+          </div>
+        </div>
+      )}
 
       <textarea
         placeholder="Notas"
@@ -334,7 +380,7 @@ export default function AssociateDetailPage() {
 
         <div className="rounded-xl border border-slate-200 bg-white p-4">
           <h2 className="mb-2 text-sm font-semibold text-slate-700">Empresa donde trabaja</h2>
-          {data.employer_name || data.employer_address || data.employer_phone || data.employer_email ? (
+          {data.is_employed ? (
             <>
               <p className="text-sm text-slate-600">Empresa: {data.employer_name ?? "—"}</p>
               <p className="text-sm text-slate-600">Dirección: {data.employer_address ?? "—"}</p>
@@ -342,7 +388,7 @@ export default function AssociateDetailPage() {
               <p className="text-sm text-slate-600">Correo: {data.employer_email ?? "—"}</p>
             </>
           ) : (
-            <p className="text-sm text-slate-400">Sin datos de empresa registrados.</p>
+            <p className="text-sm text-slate-400">No aplica — el asociado no es empleado.</p>
           )}
         </div>
 

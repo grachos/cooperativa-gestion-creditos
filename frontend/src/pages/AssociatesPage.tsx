@@ -158,6 +158,7 @@ function NewAssociateForm({ onCreated }: { onCreated: () => void }) {
     municipality: "",
     department: "",
     incomeInfo: "",
+    isEmployed: false,
     employerName: "",
     employerAddress: "",
     employerPhone: "",
@@ -172,16 +173,17 @@ function NewAssociateForm({ onCreated }: { onCreated: () => void }) {
     setError(null);
     setSubmitting(true);
     try {
-      const { birthDate, phone, email, address, municipality, department, incomeInfo, employerEmail, ...rest } = form;
+      const { address, municipality, department, incomeInfo, employerName, employerAddress, employerPhone, employerEmail, ...rest } =
+        form;
       await api.post("/associates", {
         ...rest,
-        birthDate: birthDate || undefined,
-        phone: phone || undefined,
-        email: email || undefined,
         address: address || undefined,
         municipality: municipality || undefined,
         department: department || undefined,
         incomeInfo: incomeInfo || undefined,
+        employerName: employerName || undefined,
+        employerAddress: employerAddress || undefined,
+        employerPhone: employerPhone || undefined,
         employerEmail: employerEmail || undefined
       });
       onCreated();
@@ -234,6 +236,7 @@ function NewAssociateForm({ onCreated }: { onCreated: () => void }) {
           <div>
             <label className="mb-1 block text-xs text-slate-500">Fecha de nacimiento</label>
             <input
+              required
               type="date"
               className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
               value={form.birthDate}
@@ -241,12 +244,15 @@ function NewAssociateForm({ onCreated }: { onCreated: () => void }) {
             />
           </div>
           <input
+            required
             className="rounded-md border border-slate-300 px-3 py-2 text-sm"
             placeholder="Teléfono de contacto"
             value={form.phone}
             onChange={(e) => setForm({ ...form, phone: e.target.value })}
           />
           <input
+            required
+            type="email"
             className="rounded-md border border-slate-300 px-3 py-2 text-sm"
             placeholder="Correo"
             value={form.email}
@@ -286,34 +292,74 @@ function NewAssociateForm({ onCreated }: { onCreated: () => void }) {
       </div>
 
       <div>
-        <p className="mb-2 text-xs font-semibold uppercase text-slate-400">Empresa donde trabaja</p>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <input
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-            placeholder="Empresa"
-            value={form.employerName}
-            onChange={(e) => setForm({ ...form, employerName: e.target.value })}
-          />
-          <input
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-            placeholder="Dirección de la empresa"
-            value={form.employerAddress}
-            onChange={(e) => setForm({ ...form, employerAddress: e.target.value })}
-          />
-          <input
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-            placeholder="Teléfono de la empresa"
-            value={form.employerPhone}
-            onChange={(e) => setForm({ ...form, employerPhone: e.target.value })}
-          />
-          <input
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-            placeholder="Correo de la empresa"
-            value={form.employerEmail}
-            onChange={(e) => setForm({ ...form, employerEmail: e.target.value })}
-          />
+        <p className="mb-2 text-xs font-semibold uppercase text-slate-400">¿Es empleado?</p>
+        <div className="flex gap-4">
+          <label className="flex items-center gap-2 text-sm text-slate-600">
+            <input
+              type="radio"
+              name="isEmployed"
+              checked={form.isEmployed}
+              onChange={() => setForm({ ...form, isEmployed: true })}
+            />
+            Sí
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-600">
+            <input
+              type="radio"
+              name="isEmployed"
+              checked={!form.isEmployed}
+              onChange={() =>
+                setForm({
+                  ...form,
+                  isEmployed: false,
+                  employerName: "",
+                  employerAddress: "",
+                  employerPhone: "",
+                  employerEmail: ""
+                })
+              }
+            />
+            No
+          </label>
         </div>
       </div>
+
+      {form.isEmployed && (
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase text-slate-400">Empresa donde trabaja</p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <input
+              required
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+              placeholder="Empresa"
+              value={form.employerName}
+              onChange={(e) => setForm({ ...form, employerName: e.target.value })}
+            />
+            <input
+              required
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+              placeholder="Dirección de la empresa"
+              value={form.employerAddress}
+              onChange={(e) => setForm({ ...form, employerAddress: e.target.value })}
+            />
+            <input
+              required
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+              placeholder="Teléfono de la empresa"
+              value={form.employerPhone}
+              onChange={(e) => setForm({ ...form, employerPhone: e.target.value })}
+            />
+            <input
+              required
+              type="email"
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+              placeholder="Correo de la empresa"
+              value={form.employerEmail}
+              onChange={(e) => setForm({ ...form, employerEmail: e.target.value })}
+            />
+          </div>
+        </div>
+      )}
 
       <label className="flex items-center gap-2 text-sm text-slate-600">
         <input
