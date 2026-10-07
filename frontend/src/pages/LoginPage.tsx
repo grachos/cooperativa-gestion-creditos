@@ -8,8 +8,8 @@ import { PasswordInput } from "../components/PasswordInput";
 export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [identifier, setIdentifier] = useState("admin");
-  const [password, setPassword] = useState("Demo1234*");
+  const [identifier, setIdentifier] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -112,10 +112,6 @@ export default function LoginPage() {
             >
               {submitting ? "Ingresando..." : "Ingresar"}
             </button>
-
-            <p className="mt-4 text-center text-xs text-slate-400">
-              Usuarios demo: admin, operador, aprobador, contadora, consulta · contraseña Demo1234*
-            </p>
           </form>
         )}
 
