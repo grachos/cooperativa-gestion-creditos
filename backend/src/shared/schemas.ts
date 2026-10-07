@@ -13,7 +13,7 @@ export const forgotPasswordSchema = z.object({
 
 export const resetPasswordSchema = z.object({
   token: z.string().min(10),
-  newPassword: z.string().min(6)
+  newPassword: z.string().min(8, "La contraseña debe tener al menos 8 caracteres").max(72)
 });
 
 export const associateSchema = z.object({

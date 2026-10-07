@@ -122,7 +122,12 @@ usersRouter.patch(
 
     await withTransaction(async (conn) => {
       if (data.status) {
-        await conn.query(`UPDATE users SET status = ? WHERE id = ?`, [data.status, id]);
+        // Al desactivar se revoca la sesión: sin esto el refresh token seguía
+        // emitiendo access tokens hasta su expiración (7 días).
+        await conn.query(
+          `UPDATE users SET status = ?, refresh_token_hash = CASE WHEN ? = 'INACTIVO' THEN NULL ELSE refresh_token_hash END WHERE id = ?`,
+          [data.status, data.status, id]
+        );
       }
       if (data.password) {
         const passwordHash = await bcrypt.hash(data.password, 10);

@@ -74,7 +74,7 @@ export default function ResetPasswordPage() {
               name="new-password"
               autoComplete="new-password"
               required
-              minLength={6}
+              minLength={8}
               wrapperClassName="mb-4"
               className="rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               value={newPassword}
@@ -89,7 +89,7 @@ export default function ResetPasswordPage() {
               name="confirm-password"
               autoComplete="new-password"
               required
-              minLength={6}
+              minLength={8}
               wrapperClassName="mb-6"
               className="rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               value={confirmPassword}

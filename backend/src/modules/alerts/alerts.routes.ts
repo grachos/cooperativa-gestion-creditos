@@ -1,5 +1,7 @@
+import crypto from "node:crypto";
 import { Router } from "express";
 import { pool } from "../../db/pool.js";
+import { env } from "../../config/env.js";
 import { idParam, paginationQuery } from "../../shared/schemas.js";
 import { asyncHandler, HttpError } from "../../middlewares/error.middleware.js";
 import { requireAuth, requirePermission } from "../../middlewares/auth.middleware.js";
@@ -17,6 +19,21 @@ alertsRouter.get("/stream", requireAuth, (req, res) => {
   res.write("retry: 3000\n\n");
   registerSseClient(req.user!.id, res);
 });
+
+// Job diario (Vercel Cron, ver vercel.json): actualiza días de atraso, estado
+// de mora y alertas sin depender de que alguien pulse "Recalcular".
+alertsRouter.get(
+  "/cron",
+  asyncHandler(async (req, res) => {
+    const expected = env.CRON_SECRET ? Buffer.from(`Bearer ${env.CRON_SECRET}`) : null;
+    const received = Buffer.from(req.headers.authorization ?? "");
+    if (!expected || received.length !== expected.length || !crypto.timingSafeEqual(received, expected)) {
+      throw new HttpError(401, "No autorizado");
+    }
+    const result = await recalculateAlerts();
+    res.json(result);
+  })
+);
 
 alertsRouter.use(requireAuth);
 

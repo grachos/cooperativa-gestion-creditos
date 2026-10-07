@@ -50,7 +50,7 @@ export default function AlertsPage() {
             onClick={() => void recalculate()}
             className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-100"
           >
-            Recalcular alertas (demo)
+            Recalcular ahora
           </button>
         )}
       </div>

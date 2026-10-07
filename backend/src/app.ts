@@ -20,6 +20,9 @@ import { usersRouter } from "./modules/users/users.routes.js";
 
 export const app = express();
 
+// Detrás del proxy de Vercel: sin esto req.ip es la IP del proxy y la
+// auditoría/registro de accesos guarda la misma IP para todos.
+app.set("trust proxy", 1);
 app.use(helmet());
 app.use(cors({ origin: env.CORS_ORIGIN, credentials: true }));
 app.use(express.json({ limit: "1mb" }));

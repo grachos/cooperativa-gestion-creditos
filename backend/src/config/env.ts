@@ -39,7 +39,11 @@ const envSchema = z
       .transform((v) => v === "true"),
     SMTP_USER: z.string().optional(),
     SMTP_PASSWORD: z.string().optional(),
-    SMTP_FROM: z.string().default("Coomulnissi <no-reply@coomulnissi.demo>")
+    SMTP_FROM: z.string().default("Coomulnissi <no-reply@coomulnissi.demo>"),
+    // Vercel Cron lo envía como "Authorization: Bearer <CRON_SECRET>" al
+    // invocar el job diario de mora/alertas. Sin definirlo, el job queda
+    // deshabilitado (responde 401).
+    CRON_SECRET: z.string().min(16).optional()
   })
   .refine((v) => v.DATABASE_URL || (v.DB_HOST && v.DB_NAME), {
     message: "Debe definirse DATABASE_URL o DB_HOST/DB_NAME"

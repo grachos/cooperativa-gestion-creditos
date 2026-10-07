@@ -10,6 +10,9 @@ import { requireAuth } from "../../middlewares/auth.middleware.js";
 import { sendPasswordResetEmail } from "./mailer.js";
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hora
+const MAX_FAILED_LOGINS = 5;
+const LOGIN_LOCK_WINDOW_MIN = 15;
+const MAX_RESET_EMAILS_PER_HOUR = 3;
 
 export const authRouter = Router();
 
@@ -53,6 +56,25 @@ authRouter.post(
     );
     const dbUser = (rows as any[])[0];
     if (!dbUser) throw new HttpError(401, "Credenciales inválidas");
+
+    // Contador en BD (no en memoria): en Vercel cada invocación puede caer en
+    // una instancia distinta, así que un límite en memoria no frenaría nada.
+    const [failedRows] = await pool.query<any[]>(
+      `SELECT COUNT(*) AS total FROM login_activity
+       WHERE user_id = ? AND event_type = 'LOGIN_FAILED'
+         AND created_at > now() - make_interval(mins => ?)
+         AND created_at > COALESCE(
+           (SELECT MAX(created_at) FROM login_activity WHERE user_id = ? AND event_type = 'LOGIN'),
+           'epoch'::timestamptz
+         )`,
+      [dbUser.id, LOGIN_LOCK_WINDOW_MIN, dbUser.id]
+    );
+    if (Number((failedRows as any[])[0].total) >= MAX_FAILED_LOGINS) {
+      throw new HttpError(
+        429,
+        `Demasiados intentos fallidos. Espera ${LOGIN_LOCK_WINDOW_MIN} minutos o restablece tu contraseña.`
+      );
+    }
 
     const valid = await bcrypt.compare(password, dbUser.password_hash);
     if (!valid) {
@@ -105,9 +127,21 @@ authRouter.post(
     );
     const dbUser = (rows as any[])[0];
 
-    // Siempre responde 204, exista o no el usuario: evita que alguien use
-    // este endpoint para averiguar qué correos/usuarios están registrados.
+    // Tope de correos por usuario: evita que alguien use el endpoint para
+    // inundar un buzón o agotar la cuota del proveedor de correo.
+    let underLimit = false;
     if (dbUser) {
+      const [recentRows] = await pool.query<any[]>(
+        `SELECT COUNT(*) AS total FROM password_reset_tokens
+         WHERE user_id = ? AND created_at > now() - interval '1 hour'`,
+        [dbUser.id]
+      );
+      underLimit = Number((recentRows as any[])[0].total) < MAX_RESET_EMAILS_PER_HOUR;
+    }
+
+    // Siempre responde 204, exista o no el usuario y se haya enviado o no:
+    // evita que alguien use este endpoint para averiguar qué cuentas existen.
+    if (dbUser && underLimit) {
       const rawToken = crypto.randomBytes(32).toString("hex");
       const tokenHash = await bcrypt.hash(rawToken, 10);
       const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS);
@@ -174,7 +208,9 @@ authRouter.post(
     if (!refreshToken) throw new HttpError(400, "refreshToken requerido");
 
     const decoded = verifyRefreshToken(refreshToken);
-    const [rows] = await pool.query<any[]>(`SELECT * FROM users WHERE id = ?`, [decoded.sub]);
+    const [rows] = await pool.query<any[]>(`SELECT * FROM users WHERE id = ? AND status = 'ACTIVO'`, [
+      decoded.sub
+    ]);
     const dbUser = (rows as any[])[0];
     if (!dbUser?.refresh_token_hash) throw new HttpError(401, "Sesión inválida");
 
