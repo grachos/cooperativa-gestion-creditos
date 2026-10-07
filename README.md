@@ -240,6 +240,18 @@ migraciones y todas las consultas del backend de MySQL a Postgres (tipos,
 fechas de Postgres, etc.). El motor de reglas de negocio (cuotas, mora,
 imputación, alertas) no cambió — solo el dialecto SQL.
 
+### Esquema MySQL (para desplegar en Hostinger)
+
+Hostinger no ofrece Postgres, así que el repositorio incluye el esquema en
+MySQL/MariaDB en `backend/src/db/mysql/`: las 18 migraciones, un
+`schema_completo.sql` para importar de una vez en phpMyAdmin y un
+`seed_base.sql` con roles, permisos y parámetros. Está verificado contra
+MySQL 8.0 y MariaDB 10.11 y es idéntico al de Postgres en columnas, llaves
+foráneas y llaves únicas. Eso cubre la **base de datos**; el **backend sigue
+hablando Postgres** y falta portar unas pocas consultas y el pool de
+conexiones. Los pasos y la lista exacta de lo pendiente están en
+[`backend/src/db/mysql/README.md`](backend/src/db/mysql/README.md).
+
 ## 5. Guion de demo sugerido
 
 Usuarios de demostración **solo en una base local recién sembrada**

@@ -1,0 +1,11 @@
+-- Mismo caso que tipos_identificacion (014): "tipos_ajuste" en Parámetros
+-- era solo de exhibición porque el formulario de ajustes de crédito traía
+-- su propia lista fija, y aunque se hubiera leído del parámetro, la tabla
+-- credit_adjustments solo permitía los 4 valores originales. Se abre para
+-- que el parámetro gobierne la lista de verdad.
+-- "metodos_pago" no necesita nada aquí: payments.payment_method nunca tuvo
+-- restricción, solo el formulario traía la lista fija.
+--
+-- MySQL: en 005 la columna `type` se creó como ENUM (equivalente al CHECK de
+-- Postgres); se convierte a VARCHAR conservando los valores ya guardados.
+ALTER TABLE credit_adjustments MODIFY COLUMN type VARCHAR(30) NOT NULL;

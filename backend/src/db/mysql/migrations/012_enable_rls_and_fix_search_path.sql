@@ -1,0 +1,19 @@
+-- SIN CAMBIOS PARA MYSQL.
+--
+-- En Postgres/Supabase esta migración activaba Row Level Security en las 25
+-- tablas y fijaba el search_path de la función set_updated_at(), porque
+-- Supabase expone un API REST público (PostgREST) sobre la base de datos.
+--
+-- MySQL no tiene Row Level Security ni ese API: el único acceso a la base es
+-- el usuario con el que se conecta el backend. La protección equivalente es
+-- de configuración, no de esquema:
+--   * crear un usuario MySQL exclusivo para la app, con permisos solo sobre
+--     esta base de datos (SELECT, INSERT, UPDATE, DELETE), sin GRANT ni DROP;
+--   * no habilitar "Remote MySQL" en hPanel salvo que haga falta, y si se
+--     habilita, limitarlo a las IP necesarias.
+-- Tampoco hace falta la función set_updated_at(): las columnas updated_at ya
+-- usan ON UPDATE CURRENT_TIMESTAMP.
+--
+-- La sentencia es un no-op para que el número de migración exista y quede
+-- registrado igual que en Postgres.
+DO 0;

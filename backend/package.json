@@ -9,6 +9,7 @@
     "start": "node dist/server.js",
     "migrate": "tsx src/db/migrate.ts",
     "seed": "tsx src/db/seed.ts",
+    "db:mysql:build": "node src/db/mysql/build-schema.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

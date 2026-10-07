@@ -1,0 +1,11 @@
+-- SIN CAMBIOS PARA MYSQL.
+--
+-- En Postgres esta migración quitaba el CHECK de users.id_type (solo permitía
+-- CC, CE, TI, PA, NIT) para que la lista de tipos de documento la gobierne
+-- únicamente el parámetro `tipos_identificacion`. En MySQL la columna
+-- users.id_type ya se crea sin ese CHECK (ver 010), y associates.id_type
+-- nunca lo tuvo, así que no hay nada que quitar.
+--
+-- La sentencia es un no-op para que el número de migración exista y quede
+-- registrado igual que en Postgres.
+DO 0;
