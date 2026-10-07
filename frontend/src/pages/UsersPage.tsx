@@ -37,6 +37,7 @@ function EditUserRow({ user, roles }: { user: ManagedUser; roles: Role[] }) {
   const [roleCodes, setRoleCodes] = useState(user.role_codes);
   const [newPassword, setNewPassword] = useState("");
   const [rowError, setRowError] = useState<string | null>(null);
+  const [rowSuccess, setRowSuccess] = useState<string | null>(null);
   const [contact, setContact] = useState({
     idType: user.id_type ?? "",
     idNumber: user.id_number ?? "",
@@ -48,14 +49,73 @@ function EditUserRow({ user, roles }: { user: ManagedUser; roles: Role[] }) {
     void queryClient.invalidateQueries({ queryKey: ["users"] });
   }
 
+  function showSuccess(message: string) {
+    setRowError(null);
+    setRowSuccess(message);
+    setTimeout(() => setRowSuccess((current) => (current === message ? null : current)), 3000);
+  }
+
   const patchUser = useMutation({
     mutationFn: (body: Record<string, unknown>) => api.patch(`/users/${user.id}`, body),
-    onSuccess: () => {
-      setRowError(null);
-      invalidate();
-    },
-    onError: (err) => setRowError(err instanceof Error ? err.message : "Error al actualizar el usuario")
+    onError: (err) => {
+      setRowSuccess(null);
+      setRowError(err instanceof Error ? err.message : "Error al actualizar el usuario");
+    }
   });
+
+  function saveRoles() {
+    patchUser.mutate(
+      { roleCodes },
+      {
+        onSuccess: () => {
+          invalidate();
+          showSuccess("Roles guardados correctamente.");
+        }
+      }
+    );
+  }
+
+  function saveContact() {
+    patchUser.mutate(
+      {
+        idType: contact.idType || undefined,
+        idNumber: contact.idNumber || undefined,
+        phone: contact.phone || undefined,
+        address: contact.address || undefined
+      },
+      {
+        onSuccess: () => {
+          invalidate();
+          showSuccess("Datos guardados correctamente.");
+        }
+      }
+    );
+  }
+
+  function resetPassword() {
+    patchUser.mutate(
+      { password: newPassword },
+      {
+        onSuccess: () => {
+          invalidate();
+          setNewPassword("");
+          showSuccess("Contraseña restablecida correctamente.");
+        }
+      }
+    );
+  }
+
+  function toggleStatus() {
+    patchUser.mutate(
+      { status: user.status === "ACTIVO" ? "INACTIVO" : "ACTIVO" },
+      {
+        onSuccess: () => {
+          invalidate();
+          showSuccess(user.status === "ACTIVO" ? "Usuario desactivado." : "Usuario activado.");
+        }
+      }
+    );
+  }
 
   function toggleRole(code: string) {
     setRoleCodes((prev) => (prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]));
@@ -72,8 +132,9 @@ function EditUserRow({ user, roles }: { user: ManagedUser; roles: Role[] }) {
         </div>
         <button
           type="button"
-          onClick={() => patchUser.mutate({ status: user.status === "ACTIVO" ? "INACTIVO" : "ACTIVO" })}
-          className={`shrink-0 rounded-md px-3 py-1 text-xs font-medium ${
+          onClick={toggleStatus}
+          disabled={patchUser.isPending}
+          className={`shrink-0 rounded-md px-3 py-1 text-xs font-medium disabled:opacity-50 ${
             user.status === "ACTIVO"
               ? "bg-brand-50 text-brand-700 hover:bg-brand-100"
               : "bg-slate-100 text-slate-500 hover:bg-slate-200"
@@ -84,6 +145,7 @@ function EditUserRow({ user, roles }: { user: ManagedUser; roles: Role[] }) {
       </div>
 
       {rowError && <p className="mb-2 rounded-md bg-red-50 p-2 text-xs text-red-700">{rowError}</p>}
+      {rowSuccess && <p className="mb-2 rounded-md bg-emerald-50 p-2 text-xs text-emerald-700">{rowSuccess}</p>}
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex flex-wrap gap-2">
@@ -96,11 +158,11 @@ function EditUserRow({ user, roles }: { user: ManagedUser; roles: Role[] }) {
         </div>
         <button
           type="button"
-          onClick={() => patchUser.mutate({ roleCodes })}
+          onClick={saveRoles}
           disabled={patchUser.isPending}
-          className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+          className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
         >
-          Guardar roles
+          {patchUser.isPending ? "Guardando..." : "Guardar roles"}
         </button>
       </div>
 
@@ -138,17 +200,10 @@ function EditUserRow({ user, roles }: { user: ManagedUser; roles: Role[] }) {
         <button
           type="button"
           disabled={patchUser.isPending}
-          onClick={() =>
-            patchUser.mutate({
-              idType: contact.idType || undefined,
-              idNumber: contact.idNumber || undefined,
-              phone: contact.phone || undefined,
-              address: contact.address || undefined
-            })
-          }
-          className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+          onClick={saveContact}
+          className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
         >
-          Guardar datos
+          {patchUser.isPending ? "Guardando..." : "Guardar datos"}
         </button>
       </div>
 
@@ -164,13 +219,10 @@ function EditUserRow({ user, roles }: { user: ManagedUser; roles: Role[] }) {
         <button
           type="button"
           disabled={newPassword.length < 8 || patchUser.isPending}
-          onClick={() => {
-            patchUser.mutate({ password: newPassword });
-            setNewPassword("");
-          }}
+          onClick={resetPassword}
           className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
         >
-          Restablecer contraseña
+          {patchUser.isPending ? "Guardando..." : "Restablecer contraseña"}
         </button>
       </div>
     </div>
