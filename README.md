@@ -114,8 +114,6 @@ con Vite.
 **Simulado o pendiente para producción** (ver también sección 7):
 - El adaptador real hacia el software contable externo (hoy solo se
   encola/exporta).
-- Job programado de recálculo de alertas y mora (hoy es un endpoint on-demand
-  para la demo; en producción debe ser un proceso periódico).
 - Herramienta de importación masiva desde Excel (queda documentado el plan en
   la sección 6, no implementada en este MVP).
 - Cifrado de datos sensibles en reposo, backups automatizados, HTTPS/despliegue
@@ -244,8 +242,10 @@ imputación, alertas) no cambió — solo el dialecto SQL.
 
 ## 5. Guion de demo sugerido
 
-Usuarios de demostración (contraseña `Demo1234*`):
-`admin`, `operador`, `aprobador`, `contadora`, `consulta`.
+Usuarios de demostración **solo en una base local recién sembrada**
+(`npm run seed`, contraseña `Demo1234*`): `admin`, `operador`, `aprobador`,
+`contadora`, `consulta`. En producción esas cuentas están desactivadas;
+cada usuario real debe tener su propia contraseña.
 
 1. Iniciar sesión como `admin`.
 2. Tablero: ver capital pendiente, créditos vigentes/vencidos, alertas.
@@ -337,9 +337,17 @@ antes de pasar a producción (no bloquean el prototipo):
 - [x] Helmet, CORS configurable, consultas parametrizadas (sin SQL injection).
 - [x] Transacciones para desembolso y registro/reversión de pagos.
 - [x] Auditoría de operaciones sensibles con valor anterior/nuevo.
-- [ ] HTTPS, rate limiting por endpoint, backups automatizados y cifrado en
-      reposo: pendientes de la decisión de hosting/infraestructura de la
-      cooperativa (sección 9 del prompt original).
+- [x] HTTPS (Vercel).
+- [x] Bloqueo de cuenta tras 5 intentos fallidos (15 min) y máximo 3 correos
+      de restablecimiento por hora, contados en BD (válido en serverless).
+- [x] Desactivar un usuario revoca su sesión de inmediato.
+- [x] Cierre de sesión tras 10 min de inactividad, con aviso previo.
+- [x] Job diario (Vercel Cron, 6:00 a. m. Bogotá) que recalcula días de
+      atraso, mora y alertas; protegido con `CRON_SECRET`.
+- [ ] Backups automatizados y cifrado en reposo: dependen del plan de
+      Supabase/hosting que apruebe la cooperativa.
+- [ ] Verificar un dominio propio en Resend: en modo sandbox solo llega
+      correo al dueño de la cuenta de Resend.
 
 ## 9. Riesgos y decisiones que requieren aprobación de la cooperativa
 
