@@ -67,6 +67,27 @@ export async function apiFetch<T>(
   return res.json() as Promise<T>;
 }
 
+/**
+ * Descarga un archivo de un endpoint protegido. Un <a href> normal no envía
+ * el token, así que el backend respondía 401.
+ */
+export async function downloadFile(path: string, filename: string, retried = false): Promise<void> {
+  const token = getAccessToken();
+  const res = await fetch(`${BASE_URL}${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {}
+  });
+  if (res.status === 401 && !retried && (await refreshAccessToken())) {
+    return downloadFile(path, filename, true);
+  }
+  if (!res.ok) throw new Error("No se pudo descargar el archivo");
+  const url = URL.createObjectURL(await res.blob());
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 export const api = {
   get: <T>(path: string) => apiFetch<T>(path),
   post: <T>(path: string, body?: unknown) =>

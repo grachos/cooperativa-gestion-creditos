@@ -5,6 +5,7 @@ import { Loading, ErrorView } from "../components/StateViews";
 import { useAuth } from "../context/AuthContext";
 import { useParameterList } from "../hooks/useParameterList";
 import { PasswordInput } from "../components/PasswordInput";
+import { TabBar, CrossfadePanels } from "../components/Tabs";
 
 interface UserRow {
   id: number;
@@ -320,33 +321,20 @@ export default function UsersPage() {
       </div>
 
       {canWrite && (
-        <div className="flex gap-1 border-b border-slate-200">
-          <button
-            type="button"
-            onClick={() => setTab("manage")}
-            className={`px-3 py-2 text-sm font-medium ${
-              tab === "manage"
-                ? "border-b-2 border-brand-600 text-brand-700"
-                : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            Consultar y editar
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab("create")}
-            className={`px-3 py-2 text-sm font-medium ${
-              tab === "create"
-                ? "border-b-2 border-brand-600 text-brand-700"
-                : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            Crear usuario
-          </button>
-        </div>
+        <TabBar
+          tabs={[
+            { key: "manage", label: "Consultar y editar" },
+            { key: "create", label: "Crear usuario" }
+          ]}
+          active={tab}
+          onChange={setTab}
+        />
       )}
 
-      {(!canWrite || tab === "manage") && (
+      <CrossfadePanels activeKey={canWrite ? tab : "manage"}>
+        {(k) => (
+          <>
+      {(!canWrite || k === "manage") && (
         <div className="rounded-xl border border-slate-200 bg-white p-4">
           <p className="mb-2 text-sm font-semibold text-slate-700">
             {canWrite ? "Usuarios (activar/desactivar, roles, contraseña)" : "Usuarios activos"}
@@ -369,7 +357,7 @@ export default function UsersPage() {
         </div>
       )}
 
-      {canWrite && tab === "create" && (
+      {canWrite && k === "create" && (
         <form onSubmit={onSubmit} className="space-y-4 rounded-xl border border-slate-200 bg-white p-4">
           <p className="text-sm font-semibold text-slate-700">Nuevo usuario</p>
           {formError && <p className="rounded-md bg-red-50 p-2 text-sm text-red-700">{formError}</p>}
@@ -489,6 +477,9 @@ export default function UsersPage() {
           </button>
         </form>
       )}
+          </>
+        )}
+      </CrossfadePanels>
     </div>
   );
 }

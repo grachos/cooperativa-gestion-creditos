@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "../lib/api";
+import { api, downloadFile } from "../lib/api";
 import { formatCurrency, formatDate, formatPercent } from "../lib/format";
 import { Loading, ErrorView, EmptyView } from "../components/StateViews";
+import { TabBar, CrossfadePanels } from "../components/Tabs";
 
 function downloadCsv(filename: string, header: string[], rows: (string | number)[][]) {
   const csv = [header, ...rows]
@@ -410,27 +411,19 @@ export default function ReportsPage() {
     { key: "export", label: "Exportar pagos" }
   ] as const;
   const [tab, setTab] = useState<(typeof TABS)[number]["key"]>("monthly");
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   return (
     <div>
       <h1 className="mb-4 text-xl font-semibold text-slate-800">Reportes</h1>
 
-      <div className="mb-6 flex flex-wrap gap-1 border-b border-slate-200">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => setTab(t.key)}
-            className={`px-3 py-2 text-sm font-medium ${
-              tab === t.key ? "border-b-2 border-brand-600 text-brand-700" : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <TabBar tabs={TABS} active={tab} onChange={setTab} className="mb-6" />
 
-      {tab === "monthly" && (
+      <CrossfadePanels activeKey={tab}>
+        {(k) => (
+          <>
+      {k === "monthly" && (
       <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0">
@@ -549,7 +542,7 @@ export default function ReportsPage() {
       </div>
       )}
 
-      {tab === "detail" && (
+      {k === "detail" && (
       <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0">
@@ -686,7 +679,7 @@ export default function ReportsPage() {
       </div>
       )}
 
-      {tab === "due" && (
+      {k === "due" && (
       <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-slate-700">¿Quién debe pagar en una fecha?</h2>
@@ -735,7 +728,7 @@ export default function ReportsPage() {
       </div>
       )}
 
-      {tab === "mora" && (
+      {k === "mora" && (
       <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
         <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-slate-700">Mora por bucket</h2>
@@ -770,7 +763,7 @@ export default function ReportsPage() {
       </div>
       )}
 
-      {tab === "overdue" && (
+      {k === "overdue" && (
       <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-slate-700">Cuotas vencidas y días de atraso</h2>
@@ -817,18 +810,34 @@ export default function ReportsPage() {
       </div>
       )}
 
-      {tab === "export" && (
+      {k === "export" && (
       <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
         <h2 className="mb-3 text-sm font-semibold text-slate-700">Exportar todos los pagos</h2>
-        <a
-          href="/api/v1/reports/payments.csv"
-          className="inline-block rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100"
+        <button
+          type="button"
+          disabled={exporting}
+          onClick={async () => {
+            setExportError(null);
+            setExporting(true);
+            try {
+              await downloadFile("/reports/payments.csv", "pagos.csv");
+            } catch (err) {
+              setExportError(err instanceof Error ? err.message : "No se pudo exportar");
+            } finally {
+              setExporting(false);
+            }
+          }}
+          className="inline-block rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-60"
         >
-          Exportar pagos (CSV)
-        </a>
+          {exporting ? "Exportando..." : "Exportar pagos (CSV)"}
+        </button>
+        {exportError && <p className="mt-2 text-xs text-red-600">{exportError}</p>}
         <p className="mt-2 text-xs text-slate-400">Generado: {formatDate(new Date().toISOString())}</p>
       </div>
       )}
+          </>
+        )}
+      </CrossfadePanels>
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { Loading, ErrorView } from "../components/StateViews";
 import { useAuth } from "../context/AuthContext";
+import { TabBar, CrossfadePanels } from "../components/Tabs";
 
 interface Parameter {
   key: string;
@@ -754,39 +755,30 @@ export default function ParametersPage() {
       </p>
 
       {canWrite && (
-        <div className="mb-4 flex gap-1 border-b border-slate-200">
-          <button
-            type="button"
-            onClick={() => setTab("list")}
-            className={`px-3 py-2 text-sm font-medium ${
-              tab === "list" ? "border-b-2 border-brand-600 text-brand-700" : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            Parámetros
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab("create")}
-            className={`px-3 py-2 text-sm font-medium ${
-              tab === "create"
-                ? "border-b-2 border-brand-600 text-brand-700"
-                : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            Nuevo parámetro
-          </button>
-        </div>
+        <TabBar
+          tabs={[
+            { key: "list", label: "Parámetros" },
+            { key: "create", label: "Nuevo parámetro" }
+          ]}
+          active={tab}
+          onChange={setTab}
+          className="mb-4"
+        />
       )}
 
-      {(!canWrite || tab === "list") && (
-        <div className="space-y-3">
-          {data?.map((p) => (
-            <ParameterCard key={p.key} parameter={p} canWrite={canWrite} />
-          ))}
-        </div>
-      )}
-
-      {canWrite && tab === "create" && <NewParameterForm />}
+      <CrossfadePanels activeKey={canWrite ? tab : "list"}>
+        {(k) =>
+          k === "list" ? (
+            <div className="space-y-3">
+              {data?.map((p) => (
+                <ParameterCard key={p.key} parameter={p} canWrite={canWrite} />
+              ))}
+            </div>
+          ) : (
+            <NewParameterForm />
+          )
+        }
+      </CrossfadePanels>
     </div>
   );
 }
