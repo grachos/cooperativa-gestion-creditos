@@ -46,7 +46,7 @@ export function Layout() {
     <div className="flex min-h-screen bg-slate-50">
       <aside className="hidden w-64 flex-col border-r border-slate-200 bg-white p-4 md:flex">
         <div className="mb-6 flex items-center gap-2 px-2">
-          <img src="/logo.jpg" alt="Coomulnissi" className="h-8 w-8 rounded-full object-cover" />
+          <img src="/logo.jpg" alt="Coomulnissi" className="h-10 w-10 shrink-0 object-contain" />
           <span className="text-lg font-semibold text-slate-800">Coomulnissi</span>
         </div>
         <nav className="flex flex-1 flex-col gap-1">
@@ -82,18 +82,18 @@ export function Layout() {
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 md:hidden">
           <div className="flex items-center gap-2">
-            <img src="/logo.jpg" alt="Coomulnissi" className="h-6 w-6 rounded-full object-cover" />
+            <img src="/logo.jpg" alt="Coomulnissi" className="h-9 w-9 shrink-0 object-contain" />
             <span className="font-semibold text-slate-800">Coomulnissi</span>
           </div>
           <button onClick={() => void logout()} className="text-sm text-slate-600">
             Salir
           </button>
         </header>
-        <header className="hidden items-center gap-3 border-b border-slate-200 bg-white px-6 py-4 md:flex">
-          <img src="/logo.jpg" alt="Coomulnissi" className="h-12 w-12 rounded-full object-cover shadow-sm" />
+        <header className="hidden items-center gap-4 border-b border-slate-200 bg-white px-6 py-3 md:flex">
+          <img src="/logo.jpg" alt="Coomulnissi" className="h-16 w-16 shrink-0 object-contain" />
           <div>
-            <p className="text-lg font-semibold leading-tight text-slate-800">Coomulnissi</p>
-            <p className="text-xs leading-tight text-slate-500">Cooperativa Multiactiva Nissi</p>
+            <p className="text-xl font-semibold leading-tight text-slate-800">Coomulnissi</p>
+            <p className="text-sm leading-tight text-slate-500">Cooperativa Multiactiva Nissi</p>
           </div>
         </header>
         <main className="min-w-0 flex-1 overflow-y-auto p-4 pb-20 md:p-6">

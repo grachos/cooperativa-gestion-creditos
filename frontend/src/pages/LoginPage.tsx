@@ -28,7 +28,7 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
       <form onSubmit={onSubmit} className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="mb-6 flex flex-col items-center gap-2">
-          <img src="/logo.jpg" alt="Coomulnissi" className="h-16 w-16 rounded-full object-cover" />
+          <img src="/logo.jpg" alt="Coomulnissi" className="h-24 w-24 object-contain" />
           <h1 className="text-lg font-semibold text-slate-800">Coomulnissi</h1>
           <p className="text-center text-xs text-slate-500">Cooperativa Multiactiva Nissi · Gestión de Créditos</p>
         </div>
