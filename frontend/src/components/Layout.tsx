@@ -89,6 +89,13 @@ export function Layout() {
             Salir
           </button>
         </header>
+        <header className="hidden items-center gap-3 border-b border-slate-200 bg-white px-6 py-4 md:flex">
+          <img src="/logo.jpg" alt="Coomulnissi" className="h-12 w-12 rounded-full object-cover shadow-sm" />
+          <div>
+            <p className="text-lg font-semibold leading-tight text-slate-800">Coomulnissi</p>
+            <p className="text-xs leading-tight text-slate-500">Cooperativa Multiactiva Nissi</p>
+          </div>
+        </header>
         <main className="min-w-0 flex-1 overflow-y-auto p-4 pb-20 md:p-6">
           {showNotificationBanner && (
             <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3">
