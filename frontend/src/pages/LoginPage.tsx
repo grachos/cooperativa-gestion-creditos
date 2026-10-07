@@ -7,7 +7,7 @@ import { SplashIntro } from "../components/SplashIntro";
 export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [identifier, setIdentifier] = useState("admin@cooperativa.demo");
+  const [identifier, setIdentifier] = useState("admin");
   const [password, setPassword] = useState("Demo1234*");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
