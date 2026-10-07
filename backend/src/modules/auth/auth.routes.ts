@@ -118,7 +118,15 @@ authRouter.post(
       );
 
       const resetUrl = `${env.APP_URL.replace(/\/$/, "")}/restablecer-contrasena?token=${rawToken}&uid=${dbUser.id}`;
-      await sendPasswordResetEmail(dbUser.email, resetUrl);
+      try {
+        await sendPasswordResetEmail(dbUser.email, resetUrl);
+      } catch (err) {
+        // No dejar que una falla del proveedor de correo (SMTP caído, límite
+        // de envíos, restricción de sandbox, etc.) tumbe el endpoint — el
+        // token ya quedó guardado, y seguimos respondiendo 204 igual que si
+        // el usuario no existiera, sin filtrar el motivo del fallo.
+        console.error("[auth] Error enviando correo de restablecimiento:", err);
+      }
     }
 
     res.status(204).send();
