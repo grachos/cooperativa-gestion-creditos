@@ -15,6 +15,7 @@ import {
 import { useAuth } from "../context/AuthContext";
 import { useNotifications } from "../context/NotificationsContext";
 import { SplashIntro } from "./SplashIntro";
+import { IdleTimeout } from "./IdleTimeout";
 
 const NOTIF_BANNER_DISMISSED_KEY = "notif_banner_dismissed";
 
@@ -50,6 +51,7 @@ export function Layout() {
   return (
     <>
       {justLoggedIn && <SplashIntro onLeaveStart={() => setContentVisible(true)} onDone={clearJustLoggedIn} />}
+      <IdleTimeout />
       <div className={`transition-opacity duration-500 ${contentVisible ? "opacity-100" : "opacity-0"}`}>
         <div className="flex min-h-screen bg-slate-50">
           <aside className="hidden w-64 flex-col border-r border-slate-200 bg-white p-4 md:flex">

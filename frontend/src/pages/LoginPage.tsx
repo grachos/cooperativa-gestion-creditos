@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../lib/api";
 import { SplashIntro } from "../components/SplashIntro";
@@ -8,6 +8,8 @@ import { PasswordInput } from "../components/PasswordInput";
 export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const sessionExpired = searchParams.get("expirada") === "1";
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -65,6 +67,11 @@ export default function LoginPage() {
 
         {mode === "login" && (
           <form onSubmit={onSubmit}>
+            {sessionExpired && !error && (
+              <p className="mb-4 rounded-md bg-amber-50 p-2 text-sm text-amber-800">
+                Tu sesión se cerró por inactividad. Ingresa de nuevo para continuar.
+              </p>
+            )}
             {error && <p className="mb-4 rounded-md bg-red-50 p-2 text-sm text-red-700">{error}</p>}
 
             <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="identifier">
