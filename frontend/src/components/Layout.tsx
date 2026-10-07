@@ -5,7 +5,6 @@ import {
   Users,
   FileText,
   Landmark,
-  Wallet,
   Bell,
   BarChart3,
   Settings,
@@ -47,8 +46,8 @@ export function Layout() {
     <div className="flex min-h-screen bg-slate-50">
       <aside className="hidden w-64 flex-col border-r border-slate-200 bg-white p-4 md:flex">
         <div className="mb-6 flex items-center gap-2 px-2">
-          <Wallet className="h-6 w-6 text-emerald-600" aria-hidden="true" />
-          <span className="text-lg font-semibold text-slate-800">Cooperativa</span>
+          <img src="/logo.jpg" alt="Coomulnissi" className="h-8 w-8 rounded-full object-cover" />
+          <span className="text-lg font-semibold text-slate-800">Coomulnissi</span>
         </div>
         <nav className="flex flex-1 flex-col gap-1">
           {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
@@ -58,7 +57,7 @@ export function Layout() {
               end={to === "/"}
               className={({ isActive }) =>
                 `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                  isActive ? "bg-emerald-50 text-emerald-700" : "text-slate-600 hover:bg-slate-100"
+                  isActive ? "bg-brand-50 text-brand-700" : "text-slate-600 hover:bg-slate-100"
                 }`
               }
             >
@@ -82,29 +81,32 @@ export function Layout() {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 md:hidden">
-          <span className="font-semibold text-slate-800">Cooperativa</span>
+          <div className="flex items-center gap-2">
+            <img src="/logo.jpg" alt="Coomulnissi" className="h-6 w-6 rounded-full object-cover" />
+            <span className="font-semibold text-slate-800">Coomulnissi</span>
+          </div>
           <button onClick={() => void logout()} className="text-sm text-slate-600">
             Salir
           </button>
         </header>
         <main className="min-w-0 flex-1 overflow-y-auto p-4 pb-20 md:p-6">
           {showNotificationBanner && (
-            <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-              <div className="flex items-center gap-2 text-sm text-emerald-800">
+            <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3">
+              <div className="flex items-center gap-2 text-sm text-brand-800">
                 <Bell className="h-4 w-4 shrink-0" aria-hidden="true" />
                 <span>Active las notificaciones para enterarse al instante cuando se genere una alerta.</span>
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <button
                   onClick={requestPermission}
-                  className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700"
+                  className="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700"
                 >
                   Activar notificaciones
                 </button>
                 <button
                   onClick={dismissBanner}
                   aria-label="Cerrar aviso de notificaciones"
-                  className="text-emerald-700 hover:text-emerald-900"
+                  className="text-brand-700 hover:text-brand-900"
                 >
                   <X className="h-4 w-4" aria-hidden="true" />
                 </button>
@@ -121,7 +123,7 @@ export function Layout() {
               end={to === "/"}
               className={({ isActive }) =>
                 `flex shrink-0 basis-1/5 flex-col items-center gap-1 py-2 text-[11px] ${
-                  isActive ? "text-emerald-700" : "text-slate-500"
+                  isActive ? "text-brand-700" : "text-slate-500"
                 }`
               }
             >

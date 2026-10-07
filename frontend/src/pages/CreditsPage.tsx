@@ -17,7 +17,7 @@ interface Credit {
 }
 
 const MORA_BADGE_CLASS: Record<string, string> = {
-  CD001: "bg-emerald-50 text-emerald-700",
+  CD001: "bg-brand-50 text-brand-700",
   CM030: "bg-amber-50 text-amber-700",
   CM060: "bg-amber-100 text-amber-800",
   CM090: "bg-orange-100 text-orange-800",
@@ -49,7 +49,7 @@ export default function CreditsPage() {
                 className="block rounded-xl border border-slate-200 bg-white p-3 hover:bg-slate-50"
               >
                 <div className="mb-1 flex items-center justify-between gap-2">
-                  <span className="font-medium text-emerald-700">{c.credit_number}</span>
+                  <span className="font-medium text-brand-700">{c.credit_number}</span>
                   <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs">{c.status}</span>
                 </div>
                 <p className="text-sm text-slate-500">
@@ -82,7 +82,7 @@ export default function CreditsPage() {
                 {data.data.map((c) => (
                   <tr key={c.id} className="border-t border-slate-100 hover:bg-slate-50">
                     <td className="whitespace-nowrap px-4 py-2">
-                      <Link to={`/creditos/${c.id}`} className="font-medium text-emerald-700 hover:underline">
+                      <Link to={`/creditos/${c.id}`} className="font-medium text-brand-700 hover:underline">
                         {c.credit_number}
                       </Link>
                     </td>

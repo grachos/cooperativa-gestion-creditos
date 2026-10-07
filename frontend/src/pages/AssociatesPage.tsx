@@ -11,7 +11,7 @@ import { phoneError, emailError, birthDateError } from "../lib/validators";
 const DEFAULT_ID_TYPES = ["CC", "CE", "TI", "PA", "NIT"];
 
 const STATUS_STYLES: Record<string, string> = {
-  ACTIVO: "bg-emerald-50 text-emerald-700",
+  ACTIVO: "bg-brand-50 text-brand-700",
   INACTIVO: "bg-slate-100 text-slate-500",
   RECHAZADO: "bg-red-50 text-red-700"
 };
@@ -45,7 +45,7 @@ export default function AssociatesPage() {
         {hasPermission("associates:write") && (
           <button
             onClick={() => setShowForm((v) => !v)}
-            className="flex items-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700"
+            className="flex items-center gap-2 rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700"
           >
             <Plus className="h-4 w-4" aria-hidden="true" /> Nuevo asociado
           </button>
@@ -88,7 +88,7 @@ export default function AssociatesPage() {
                 className="block rounded-xl border border-slate-200 bg-white p-3 hover:bg-slate-50"
               >
                 <div className="mb-1 flex items-center justify-between gap-2">
-                  <span className="font-medium text-emerald-700">
+                  <span className="font-medium text-brand-700">
                     {a.first_name} {a.last_name}
                   </span>
                   <span
@@ -119,7 +119,7 @@ export default function AssociatesPage() {
                 {data.data.map((a) => (
                   <tr key={a.id} className="border-t border-slate-100 hover:bg-slate-50">
                     <td className="px-4 py-2">
-                      <Link to={`/asociados/${a.id}`} className="font-medium text-emerald-700 hover:underline">
+                      <Link to={`/asociados/${a.id}`} className="font-medium text-brand-700 hover:underline">
                         {a.first_name} {a.last_name}
                       </Link>
                     </td>
@@ -414,7 +414,7 @@ function NewAssociateForm({ onCreated }: { onCreated: () => void }) {
       <button
         type="submit"
         disabled={submitting}
-        className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+        className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
       >
         {submitting ? "Guardando..." : "Guardar asociado"}
       </button>

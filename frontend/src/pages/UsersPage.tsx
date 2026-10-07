@@ -75,7 +75,7 @@ function EditUserRow({ user, roles }: { user: ManagedUser; roles: Role[] }) {
           onClick={() => patchUser.mutate({ status: user.status === "ACTIVO" ? "INACTIVO" : "ACTIVO" })}
           className={`shrink-0 rounded-md px-3 py-1 text-xs font-medium ${
             user.status === "ACTIVO"
-              ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+              ? "bg-brand-50 text-brand-700 hover:bg-brand-100"
               : "bg-slate-100 text-slate-500 hover:bg-slate-200"
           }`}
         >
@@ -273,7 +273,7 @@ export default function UsersPage() {
             onClick={() => setTab("manage")}
             className={`px-3 py-2 text-sm font-medium ${
               tab === "manage"
-                ? "border-b-2 border-emerald-600 text-emerald-700"
+                ? "border-b-2 border-brand-600 text-brand-700"
                 : "text-slate-500 hover:text-slate-700"
             }`}
           >
@@ -284,7 +284,7 @@ export default function UsersPage() {
             onClick={() => setTab("create")}
             className={`px-3 py-2 text-sm font-medium ${
               tab === "create"
-                ? "border-b-2 border-emerald-600 text-emerald-700"
+                ? "border-b-2 border-brand-600 text-brand-700"
                 : "text-slate-500 hover:text-slate-700"
             }`}
           >
@@ -431,7 +431,7 @@ export default function UsersPage() {
           <button
             type="submit"
             disabled={createUser.isPending}
-            className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+            className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
           >
             {createUser.isPending ? "Guardando..." : "Crear usuario"}
           </button>

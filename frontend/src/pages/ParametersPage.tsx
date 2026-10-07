@@ -231,7 +231,7 @@ function ObjectFieldsEditor({ fields, onChange }: { fields: Field[]; onChange: (
       <button
         type="button"
         onClick={() => onChange([...fields, { key: "", type: "string", value: "" }])}
-        className="text-xs text-emerald-700 hover:underline"
+        className="text-xs text-brand-700 hover:underline"
       >
         + Agregar campo
       </button>
@@ -258,7 +258,7 @@ function ListTextEditor({ items, onChange }: { items: string[]; onChange: (v: st
           </button>
         </div>
       ))}
-      <button type="button" onClick={() => onChange([...items, ""])} className="text-xs text-emerald-700 hover:underline">
+      <button type="button" onClick={() => onChange([...items, ""])} className="text-xs text-brand-700 hover:underline">
         + Agregar valor
       </button>
     </div>
@@ -365,13 +365,13 @@ function ListObjectEditor({
         </table>
       </div>
       <div className="flex gap-3">
-        <button type="button" onClick={addColumn} className="text-xs text-emerald-700 hover:underline">
+        <button type="button" onClick={addColumn} className="text-xs text-brand-700 hover:underline">
           + Agregar campo
         </button>
         <button
           type="button"
           onClick={() => setRows([...rows, columns.map(() => "")])}
-          className="text-xs text-emerald-700 hover:underline"
+          className="text-xs text-brand-700 hover:underline"
         >
           + Agregar fila
         </button>
@@ -609,7 +609,7 @@ function ParameterCard({ parameter, canWrite }: { parameter: Parameter; canWrite
               type="button"
               onClick={save}
               disabled={update.isPending}
-              className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+              className="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-60"
             >
               {update.isPending ? "Guardando..." : "Guardar"}
             </button>
@@ -724,7 +724,7 @@ function NewParameterForm() {
       <button
         type="submit"
         disabled={create.isPending}
-        className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+        className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
       >
         {create.isPending ? "Creando..." : "Crear parámetro"}
       </button>
@@ -759,7 +759,7 @@ export default function ParametersPage() {
             type="button"
             onClick={() => setTab("list")}
             className={`px-3 py-2 text-sm font-medium ${
-              tab === "list" ? "border-b-2 border-emerald-600 text-emerald-700" : "text-slate-500 hover:text-slate-700"
+              tab === "list" ? "border-b-2 border-brand-600 text-brand-700" : "text-slate-500 hover:text-slate-700"
             }`}
           >
             Parámetros
@@ -769,7 +769,7 @@ export default function ParametersPage() {
             onClick={() => setTab("create")}
             className={`px-3 py-2 text-sm font-medium ${
               tab === "create"
-                ? "border-b-2 border-emerald-600 text-emerald-700"
+                ? "border-b-2 border-brand-600 text-brand-700"
                 : "text-slate-500 hover:text-slate-700"
             }`}
           >

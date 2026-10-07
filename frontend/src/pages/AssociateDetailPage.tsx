@@ -35,7 +35,7 @@ interface AssociateDetail {
 const DEFAULT_ID_TYPES = ["CC", "CE", "TI", "PA", "NIT"];
 
 const STATUS_STYLES: Record<string, string> = {
-  ACTIVO: "bg-emerald-50 text-emerald-700",
+  ACTIVO: "bg-brand-50 text-brand-700",
   INACTIVO: "bg-slate-100 text-slate-500",
   RECHAZADO: "bg-red-50 text-red-700"
 };
@@ -311,7 +311,7 @@ function EditAssociateForm({ data, onDone }: { data: AssociateDetail; onDone: ()
         <button
           type="submit"
           disabled={update.isPending}
-          className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+          className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
         >
           {update.isPending ? "Guardando..." : "Guardar cambios"}
         </button>
@@ -382,7 +382,7 @@ export default function AssociateDetailPage() {
               <button
                 type="button"
                 onClick={() => changeStatus.mutate("ACTIVO")}
-                className="text-xs text-emerald-700 hover:underline"
+                className="text-xs text-brand-700 hover:underline"
               >
                 Activar
               </button>
@@ -468,7 +468,7 @@ export default function AssociateDetailPage() {
               {data.credits.map((c) => (
                 <tr key={c.id} className="border-t border-slate-100">
                   <td className="py-1">
-                    <Link to={`/creditos/${c.id}`} className="text-emerald-700 hover:underline">
+                    <Link to={`/creditos/${c.id}`} className="text-brand-700 hover:underline">
                       {c.credit_number}
                     </Link>
                   </td>

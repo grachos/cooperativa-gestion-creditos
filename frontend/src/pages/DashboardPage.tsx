@@ -180,7 +180,7 @@ export default function DashboardPage() {
           title="Pagos recibidos (últimos 30 días)"
           subtitle="Efectivo confirmado, todos los créditos"
         >
-          <p className="text-3xl font-semibold text-emerald-700">{formatCurrency(data.pagosUltimos30Dias)}</p>
+          <p className="text-3xl font-semibold text-brand-700">{formatCurrency(data.pagosUltimos30Dias)}</p>
         </ChartCard>
       </div>
 

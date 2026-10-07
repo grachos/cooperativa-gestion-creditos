@@ -35,7 +35,7 @@ export default function ApplicationsPage() {
         {hasPermission("applications:write") && (
           <Link
             to="/solicitudes/nueva"
-            className="flex items-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700"
+            className="flex items-center gap-2 rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700"
           >
             <Plus className="h-4 w-4" aria-hidden="true" /> Nueva solicitud
           </Link>
@@ -46,7 +46,7 @@ export default function ApplicationsPage() {
         <button
           onClick={() => setStatus("")}
           className={`whitespace-nowrap rounded-full px-3 py-1 text-xs ${
-            status === "" ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-600"
+            status === "" ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-600"
           }`}
         >
           Todas
@@ -56,7 +56,7 @@ export default function ApplicationsPage() {
             key={s}
             onClick={() => setStatus(s)}
             className={`whitespace-nowrap rounded-full px-3 py-1 text-xs ${
-              status === s ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-600"
+              status === s ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-600"
             }`}
           >
             {s}
@@ -78,7 +78,7 @@ export default function ApplicationsPage() {
                 className="block rounded-xl border border-slate-200 bg-white p-3 hover:bg-slate-50"
               >
                 <div className="mb-1 flex items-center justify-between gap-2">
-                  <span className="font-medium text-emerald-700">
+                  <span className="font-medium text-brand-700">
                     {a.first_name ? `${a.first_name} ${a.last_name}` : a.legal_name}
                   </span>
                   <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs">{a.status}</span>
@@ -103,7 +103,7 @@ export default function ApplicationsPage() {
                 {data.data.map((a) => (
                   <tr key={a.id} className="border-t border-slate-100 hover:bg-slate-50">
                     <td className="px-4 py-2">
-                      <Link to={`/solicitudes/${a.id}`} className="font-medium text-emerald-700 hover:underline">
+                      <Link to={`/solicitudes/${a.id}`} className="font-medium text-brand-700 hover:underline">
                         {a.first_name ? `${a.first_name} ${a.last_name}` : a.legal_name}
                       </Link>
                     </td>

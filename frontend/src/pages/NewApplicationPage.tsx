@@ -84,7 +84,7 @@ export default function NewApplicationPage() {
             <button
               type="button"
               onClick={() => setForm({ ...form, coDebtorAssociateIds: [...form.coDebtorAssociateIds, ""] })}
-              className="text-sm font-medium text-emerald-700 hover:text-emerald-800"
+              className="text-sm font-medium text-brand-700 hover:text-brand-800"
             >
               + Agregar codeudor
             </button>
@@ -186,7 +186,7 @@ export default function NewApplicationPage() {
         <button
           type="submit"
           disabled={submitting}
-          className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+          className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
         >
           {submitting ? "Guardando..." : "Radicar solicitud"}
         </button>

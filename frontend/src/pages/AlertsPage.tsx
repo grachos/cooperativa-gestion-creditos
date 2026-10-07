@@ -42,7 +42,7 @@ export default function AlertsPage() {
         <div>
           <h1 className="text-xl font-semibold text-slate-800">Centro de alertas</h1>
           {liveAlertCount > 0 && (
-            <p className="text-xs text-emerald-600">{liveAlertCount} alerta(s) nueva(s) en tiempo real</p>
+            <p className="text-xs text-brand-600">{liveAlertCount} alerta(s) nueva(s) en tiempo real</p>
           )}
         </div>
         {hasPermission("alerts:write") && (
@@ -77,7 +77,7 @@ export default function AlertsPage() {
                 {a.credit_number && <span className="ml-2 text-xs text-slate-400">({a.credit_number})</span>}
               </div>
               {hasPermission("alerts:write") && (
-                <button onClick={() => void resolve(a.id)} className="text-xs text-emerald-700 hover:underline">
+                <button onClick={() => void resolve(a.id)} className="text-xs text-brand-700 hover:underline">
                   Marcar atendida
                 </button>
               )}

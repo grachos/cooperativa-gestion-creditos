@@ -422,7 +422,7 @@ export default function ReportsPage() {
             type="button"
             onClick={() => setTab(t.key)}
             className={`px-3 py-2 text-sm font-medium ${
-              tab === t.key ? "border-b-2 border-emerald-600 text-emerald-700" : "text-slate-500 hover:text-slate-700"
+              tab === t.key ? "border-b-2 border-brand-600 text-brand-700" : "text-slate-500 hover:text-slate-700"
             }`}
           >
             {t.label}
@@ -637,7 +637,7 @@ export default function ReportsPage() {
                       <span
                         className={`rounded-full px-2 py-0.5 text-xs ${
                           r.status === "PAGADO"
-                            ? "bg-emerald-50 text-emerald-700"
+                            ? "bg-brand-50 text-brand-700"
                             : r.status === "EN_MORA"
                               ? "bg-red-50 text-red-700"
                               : "bg-slate-100 text-slate-500"

@@ -38,7 +38,7 @@ interface ApplicationDetail {
 
 const REVIEW_STATUS_STYLES: Record<string, string> = {
   PENDIENTE: "bg-slate-100 text-slate-500",
-  APROBADO: "bg-emerald-50 text-emerald-700",
+  APROBADO: "bg-brand-50 text-brand-700",
   RECHAZADO: "bg-red-50 text-red-700"
 };
 
@@ -97,7 +97,7 @@ function ReviewRow({
             type="button"
             disabled={saving}
             onClick={() => void save("APROBADO")}
-            className="rounded-md bg-emerald-600 px-2 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+            className="rounded-md bg-brand-600 px-2 py-1 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-60"
           >
             Aprobar
           </button>
@@ -289,7 +289,7 @@ export default function ApplicationDetailPage() {
           </p>
           <button
             onClick={() => void approve()}
-            className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700"
+            className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
           >
             Aprobar solicitud
           </button>
@@ -365,7 +365,7 @@ export default function ApplicationDetailPage() {
           </div>
           <button
             onClick={() => void disburse()}
-            className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700"
+            className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
           >
             Confirmar desembolso
           </button>
