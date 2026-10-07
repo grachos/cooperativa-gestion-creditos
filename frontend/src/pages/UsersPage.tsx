@@ -4,6 +4,7 @@ import { api } from "../lib/api";
 import { Loading, ErrorView } from "../components/StateViews";
 import { useAuth } from "../context/AuthContext";
 import { useParameterList } from "../hooks/useParameterList";
+import { PasswordInput } from "../components/PasswordInput";
 
 interface UserRow {
   id: number;
@@ -208,13 +209,13 @@ function EditUserRow({ user, roles }: { user: ManagedUser; roles: Role[] }) {
       </div>
 
       <div className="mt-2 flex items-center gap-2">
-        <input
-          type="password"
+        <PasswordInput
           placeholder="Nueva contraseña (mínimo 8)"
           minLength={8}
           value={newPassword}
           onChange={(e) => setNewPassword(e.target.value)}
-          className="w-56 rounded-md border border-slate-300 px-2 py-1 text-xs"
+          wrapperClassName="w-56"
+          className="rounded-md border border-slate-300 px-2 py-1 text-xs"
         />
         <button
           type="button"
@@ -452,11 +453,10 @@ export default function UsersPage() {
 
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">Contraseña (mínimo 8 caracteres)</label>
-            <input
-              type="password"
+            <PasswordInput
               required
               minLength={8}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
               value={form.password}
               onChange={(e) => setForm({ ...form, password: e.target.value })}
             />

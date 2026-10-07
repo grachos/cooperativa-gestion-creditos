@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../lib/api";
 import { SplashIntro } from "../components/SplashIntro";
+import { PasswordInput } from "../components/PasswordInput";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -80,10 +81,9 @@ export default function LoginPage() {
             <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="password">
               Contraseña
             </label>
-            <input
+            <PasswordInput
               id="password"
-              type="password"
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required

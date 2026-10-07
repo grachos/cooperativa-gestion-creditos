@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
+import { PasswordInput } from "../components/PasswordInput";
 
 export default function ResetPasswordPage() {
   const [searchParams] = useSearchParams();
@@ -68,12 +69,12 @@ export default function ResetPasswordPage() {
             <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="new-password">
               Nueva contraseña
             </label>
-            <input
+            <PasswordInput
               id="new-password"
-              type="password"
               required
               minLength={6}
-              className="mb-4 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              wrapperClassName="mb-4"
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
             />
@@ -81,12 +82,12 @@ export default function ResetPasswordPage() {
             <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="confirm-password">
               Confirmar contraseña
             </label>
-            <input
+            <PasswordInput
               id="confirm-password"
-              type="password"
               required
               minLength={6}
-              className="mb-6 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              wrapperClassName="mb-6"
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
             />
