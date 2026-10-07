@@ -26,7 +26,20 @@ const envSchema = z
     JWT_REFRESH_EXPIRES_IN: z.string().default("7d"),
     CORS_ORIGIN: z.string().default("http://localhost:5173"),
     TIMEZONE: z.string().default("America/Bogota"),
-    CURRENCY: z.string().default("COP")
+    CURRENCY: z.string().default("COP"),
+    // URL pública del frontend, usada para armar el enlace de restablecer
+    // contraseña dentro del correo. Sin SMTP configurado, el enlace se
+    // registra en consola en vez de enviarse (ver mailer.ts).
+    APP_URL: z.string().default("http://localhost:5173"),
+    SMTP_HOST: z.string().optional(),
+    SMTP_PORT: z.coerce.number().default(587),
+    SMTP_SECURE: z
+      .string()
+      .optional()
+      .transform((v) => v === "true"),
+    SMTP_USER: z.string().optional(),
+    SMTP_PASSWORD: z.string().optional(),
+    SMTP_FROM: z.string().default("Coomulnissi <no-reply@coomulnissi.demo>")
   })
   .refine((v) => v.DATABASE_URL || (v.DB_HOST && v.DB_NAME), {
     message: "Debe definirse DATABASE_URL o DB_HOST/DB_NAME"

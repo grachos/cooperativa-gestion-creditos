@@ -1,10 +1,15 @@
+import crypto from "node:crypto";
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { pool } from "../../db/pool.js";
-import { loginSchema } from "../../shared/schemas.js";
+import { env } from "../../config/env.js";
+import { forgotPasswordSchema, loginSchema, resetPasswordSchema } from "../../shared/schemas.js";
 import { asyncHandler, HttpError } from "../../middlewares/error.middleware.js";
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from "./auth.service.js";
 import { requireAuth } from "../../middlewares/auth.middleware.js";
+import { sendPasswordResetEmail } from "./mailer.js";
+
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hora
 
 export const authRouter = Router();
 
@@ -86,6 +91,71 @@ authRouter.post(
         permissions: access.permissions
       }
     });
+  })
+);
+
+authRouter.post(
+  "/forgot-password",
+  asyncHandler(async (req, res) => {
+    const { identifier } = forgotPasswordSchema.parse(req.body);
+
+    const [rows] = await pool.query<any[]>(
+      `SELECT id, email FROM users WHERE (email = ? OR username = ?) AND status = 'ACTIVO'`,
+      [identifier, identifier]
+    );
+    const dbUser = (rows as any[])[0];
+
+    // Siempre responde 204, exista o no el usuario: evita que alguien use
+    // este endpoint para averiguar qué correos/usuarios están registrados.
+    if (dbUser) {
+      const rawToken = crypto.randomBytes(32).toString("hex");
+      const tokenHash = await bcrypt.hash(rawToken, 10);
+      const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS);
+
+      await pool.query(
+        `INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)`,
+        [dbUser.id, tokenHash, expiresAt]
+      );
+
+      const resetUrl = `${env.APP_URL.replace(/\/$/, "")}/restablecer-contrasena?token=${rawToken}&uid=${dbUser.id}`;
+      await sendPasswordResetEmail(dbUser.email, resetUrl);
+    }
+
+    res.status(204).send();
+  })
+);
+
+authRouter.post(
+  "/reset-password",
+  asyncHandler(async (req, res) => {
+    const { token, newPassword } = resetPasswordSchema.parse(req.body);
+    const uid = Number(req.body?.uid);
+    if (!uid) throw new HttpError(400, "Solicitud de restablecimiento inválida");
+
+    const [rows] = await pool.query<any[]>(
+      `SELECT * FROM password_reset_tokens
+       WHERE user_id = ? AND used_at IS NULL AND expires_at > now()
+       ORDER BY id DESC`,
+      [uid]
+    );
+
+    let matchedTokenId: number | null = null;
+    for (const row of rows as any[]) {
+      if (await bcrypt.compare(token, row.token_hash)) {
+        matchedTokenId = row.id;
+        break;
+      }
+    }
+    if (!matchedTokenId) throw new HttpError(400, "El enlace de restablecimiento es inválido o venció");
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await pool.query(`UPDATE users SET password_hash = ?, refresh_token_hash = NULL WHERE id = ?`, [
+      passwordHash,
+      uid
+    ]);
+    await pool.query(`UPDATE password_reset_tokens SET used_at = now() WHERE id = ?`, [matchedTokenId]);
+
+    res.status(204).send();
   })
 );
 

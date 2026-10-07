@@ -7,6 +7,15 @@ export const loginSchema = z.object({
   password: z.string().min(6)
 });
 
+export const forgotPasswordSchema = z.object({
+  identifier: z.string().min(3)
+});
+
+export const resetPasswordSchema = z.object({
+  token: z.string().min(10),
+  newPassword: z.string().min(6)
+});
+
 export const associateSchema = z.object({
   idType: z.string().trim().min(1).max(20),
   idNumber: z.string().min(4).max(40),
