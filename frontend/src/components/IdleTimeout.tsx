@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Clock } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
@@ -10,19 +10,23 @@ const WARNING_MS = 60 * 1000;
 const LAST_ACTIVITY_KEY = "lastActivityAt";
 const ACTIVITY_EVENTS = ["mousedown", "keydown", "scroll", "touchstart", "mousemove"] as const;
 
+// Respaldo en memoria por si localStorage no está disponible (modo privado).
+let memoryLastActivity = Date.now();
+
 function readLastActivity(): number {
   try {
-    return Number(localStorage.getItem(LAST_ACTIVITY_KEY)) || Date.now();
+    return Number(localStorage.getItem(LAST_ACTIVITY_KEY)) || memoryLastActivity;
   } catch {
-    return Date.now();
+    return memoryLastActivity;
   }
 }
 
 function writeLastActivity(at: number) {
+  memoryLastActivity = at;
   try {
     localStorage.setItem(LAST_ACTIVITY_KEY, String(at));
   } catch {
-    // Sin almacenamiento (modo privado): el temporizador sigue funcionando en esta pestaña.
+    // Sin almacenamiento: el temporizador sigue funcionando en esta pestaña.
   }
 }
 
@@ -30,38 +34,49 @@ export function IdleTimeout() {
   const { logout } = useAuth();
   const navigate = useNavigate();
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
-  const lastWrite = useRef(0);
-  const warning = secondsLeft !== null;
 
-  const expire = useCallback(
-    async (byInactivity = true) => {
-      await logout();
+  // El efecto del temporizador corre UNA sola vez. Antes dependía del estado del
+  // aviso y, al abrirse, se reiniciaba y volvía a marcar "actividad ahora": el
+  // aviso desaparecía al segundo y la sesión nunca se cerraba. Lo que cambia
+  // entre renders (logout, navigate, si el aviso está abierto) se lee por refs.
+  const warningOpen = useRef(false);
+  const lastWrite = useRef(0);
+  const expireRef = useRef<(byInactivity: boolean) => Promise<void>>(async () => {});
+
+  useEffect(() => {
+    expireRef.current = async (byInactivity: boolean) => {
+      try {
+        await logout();
+      } catch {
+        // Aunque el servidor no responda, la sesión local ya se limpió.
+      }
       navigate(byInactivity ? "/login?expirada=1" : "/login", { replace: true });
-    },
-    [logout, navigate]
-  );
+    };
+  });
 
   useEffect(() => {
     writeLastActivity(Date.now());
 
     function onActivity() {
       const now = Date.now();
-      // Mientras el aviso está abierto solo cuenta el botón "Seguir conectado".
-      if (warning || now - lastWrite.current < 5000) return;
+      // Con el aviso abierto solo cuenta el botón "Seguir conectado".
+      if (warningOpen.current || now - lastWrite.current < 5000) return;
       lastWrite.current = now;
       writeLastActivity(now);
     }
-
     ACTIVITY_EVENTS.forEach((e) => window.addEventListener(e, onActivity, { passive: true }));
 
     const timer = setInterval(() => {
       const idle = Date.now() - readLastActivity();
       if (idle >= IDLE_LIMIT_MS) {
         clearInterval(timer);
-        void expire();
+        void expireRef.current(true);
       } else if (idle >= IDLE_LIMIT_MS - WARNING_MS) {
+        warningOpen.current = true;
         setSecondsLeft(Math.ceil((IDLE_LIMIT_MS - idle) / 1000));
       } else {
+        // También cierra el aviso si otra pestaña registró actividad.
+        warningOpen.current = false;
         setSecondsLeft(null);
       }
     }, 1000);
@@ -70,18 +85,24 @@ export function IdleTimeout() {
       ACTIVITY_EVENTS.forEach((e) => window.removeEventListener(e, onActivity));
       clearInterval(timer);
     };
-  }, [warning, expire]);
+  }, []);
 
   function stayLoggedIn() {
     writeLastActivity(Date.now());
+    warningOpen.current = false;
     setSecondsLeft(null);
     void api.get("/auth/me").catch(() => {});
   }
 
-  if (!warning) return null;
+  if (secondsLeft === null) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4" role="alertdialog" aria-modal="true" aria-labelledby="idle-title">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="idle-title"
+    >
       <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-lg">
         <div className="mb-3 flex items-center gap-2 text-brand-700">
           <Clock className="h-5 w-5" aria-hidden="true" />
@@ -103,7 +124,7 @@ export function IdleTimeout() {
           </button>
           <button
             type="button"
-            onClick={() => void expire(false)}
+            onClick={() => void expireRef.current(false)}
             className="rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"
           >
             Cerrar sesión
