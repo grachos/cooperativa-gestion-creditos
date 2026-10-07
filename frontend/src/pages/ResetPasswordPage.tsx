@@ -71,6 +71,8 @@ export default function ResetPasswordPage() {
             </label>
             <PasswordInput
               id="new-password"
+              name="new-password"
+              autoComplete="new-password"
               required
               minLength={6}
               wrapperClassName="mb-4"
@@ -84,6 +86,8 @@ export default function ResetPasswordPage() {
             </label>
             <PasswordInput
               id="confirm-password"
+              name="confirm-password"
+              autoComplete="new-password"
               required
               minLength={6}
               wrapperClassName="mb-6"

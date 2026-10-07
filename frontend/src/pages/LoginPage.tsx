@@ -72,6 +72,8 @@ export default function LoginPage() {
             </label>
             <input
               id="identifier"
+              name="username"
+              autoComplete="username"
               className="mb-4 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
@@ -83,6 +85,8 @@ export default function LoginPage() {
             </label>
             <PasswordInput
               id="password"
+              name="password"
+              autoComplete="current-password"
               className="rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -128,6 +132,8 @@ export default function LoginPage() {
             </label>
             <input
               id="forgot-identifier"
+              name="username"
+              autoComplete="username"
               className="mb-6 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               value={forgotIdentifier}
               onChange={(e) => setForgotIdentifier(e.target.value)}
