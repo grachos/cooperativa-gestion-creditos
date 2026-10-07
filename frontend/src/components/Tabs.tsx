@@ -12,17 +12,24 @@ interface TabBarProps<K extends string> {
   className?: string;
 }
 
-/** Barra de pestañas con un indicador que se desliza hasta la pestaña activa. */
+/**
+ * Control segmentado: las pestañas viven en una pista redondeada y una
+ * "píldora" con borde de marca se desliza hasta la pestaña activa.
+ */
 export function TabBar<K extends string>({ tabs, active, onChange, className = "" }: TabBarProps<K>) {
   const listRef = useRef<HTMLDivElement>(null);
-  const [indicator, setIndicator] = useState<{ left: number; width: number } | null>(null);
+  const [indicator, setIndicator] = useState<{ left: number; top: number; width: number; height: number } | null>(
+    null
+  );
 
   useLayoutEffect(() => {
     const list = listRef.current;
     if (!list) return;
     const measure = () => {
       const btn = list.querySelector<HTMLButtonElement>(`[data-tab-key="${active}"]`);
-      if (btn) setIndicator({ left: btn.offsetLeft, width: btn.offsetWidth });
+      if (!btn) return;
+      setIndicator({ left: btn.offsetLeft, top: btn.offsetTop, width: btn.offsetWidth, height: btn.offsetHeight });
+      btn.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -45,8 +52,19 @@ export function TabBar<K extends string>({ tabs, active, onChange, className = "
       ref={listRef}
       role="tablist"
       onKeyDown={onKeyDown}
-      className={`relative flex gap-1 overflow-x-auto border-b border-slate-200 [scrollbar-width:none] ${className}`}
+      className={`relative flex w-fit max-w-full gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-slate-100/80 p-1 [scrollbar-width:none] ${className}`}
     >
+      {indicator && (
+        <span
+          aria-hidden="true"
+          className="tab-indicator pointer-events-none absolute left-0 top-0 rounded-lg border border-brand-400 bg-white shadow-sm"
+          style={{
+            width: indicator.width,
+            height: indicator.height,
+            transform: `translate(${indicator.left}px, ${indicator.top}px)`
+          }}
+        />
+      )}
       {tabs.map((t) => {
         const selected = t.key === active;
         return (
@@ -58,21 +76,14 @@ export function TabBar<K extends string>({ tabs, active, onChange, className = "
             aria-selected={selected}
             tabIndex={selected ? 0 : -1}
             onClick={() => onChange(t.key)}
-            className={`shrink-0 whitespace-nowrap px-3 py-2 text-sm font-medium transition-colors duration-200 ${
-              selected ? "text-brand-700" : "text-slate-500 hover:text-slate-700"
+            className={`relative z-10 shrink-0 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-colors duration-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 ${
+              selected ? "text-brand-700" : "text-slate-500 hover:text-slate-800"
             }`}
           >
             {t.label}
           </button>
         );
       })}
-      {indicator && (
-        <span
-          aria-hidden="true"
-          className="tab-indicator pointer-events-none absolute bottom-0 left-0 h-0.5 rounded-full bg-brand-600"
-          style={{ width: indicator.width, transform: `translateX(${indicator.left}px)` }}
-        />
-      )}
     </div>
   );
 }
@@ -82,7 +93,7 @@ interface CrossfadePanelsProps<K extends string> {
   children: (key: K) => ReactNode;
 }
 
-const FADE_MS = 260;
+const FADE_MS = 450;
 
 /**
  * Al cambiar de pestaña, el panel anterior se desvanece mientras el nuevo
