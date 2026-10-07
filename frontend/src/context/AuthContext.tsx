@@ -12,6 +12,8 @@ export interface AuthUser {
 interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
+  justLoggedIn: boolean;
+  clearJustLoggedIn: () => void;
   login: (identifier: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   hasPermission: (permission: string) => boolean;
@@ -22,6 +24,7 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [justLoggedIn, setJustLoggedIn] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem("accessToken");
@@ -47,6 +50,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem("accessToken", data.accessToken);
     localStorage.setItem("refreshToken", data.refreshToken);
     setUser(data.user);
+    setJustLoggedIn(true);
+  }
+
+  function clearJustLoggedIn() {
+    setJustLoggedIn(false);
   }
 
   async function logout() {
@@ -56,6 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem("accessToken");
       localStorage.removeItem("refreshToken");
       setUser(null);
+      setJustLoggedIn(false);
     }
   }
 
@@ -63,7 +72,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return user?.permissions.includes(permission) ?? false;
   }
 
-  const value = useMemo(() => ({ user, loading, login, logout, hasPermission }), [user, loading]);
+  const value = useMemo(
+    () => ({ user, loading, justLoggedIn, clearJustLoggedIn, login, logout, hasPermission }),
+    [user, loading, justLoggedIn]
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

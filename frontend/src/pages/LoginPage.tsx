@@ -1,10 +1,8 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../lib/api";
-
-const SPLASH_VISIBLE_MS = 900;
-const SPLASH_TRANSITION_MS = 600;
+import { SplashIntro } from "../components/SplashIntro";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -19,17 +17,7 @@ export default function LoginPage() {
   const [forgotError, setForgotError] = useState<string | null>(null);
   const [forgotSubmitting, setForgotSubmitting] = useState(false);
 
-  const [splashLeaving, setSplashLeaving] = useState(false);
-  const [splashMounted, setSplashMounted] = useState(true);
-
-  useEffect(() => {
-    const leaveTimer = setTimeout(() => setSplashLeaving(true), SPLASH_VISIBLE_MS);
-    const unmountTimer = setTimeout(() => setSplashMounted(false), SPLASH_VISIBLE_MS + SPLASH_TRANSITION_MS);
-    return () => {
-      clearTimeout(leaveTimer);
-      clearTimeout(unmountTimer);
-    };
-  }, []);
+  const [splashDone, setSplashDone] = useState(false);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -61,28 +49,11 @@ export default function LoginPage() {
 
   return (
     <div className="relative flex min-h-screen items-center justify-center bg-slate-50 px-4">
-      {splashMounted && (
-        <div
-          className={`fixed inset-0 z-50 flex items-center justify-center bg-white transition-all ease-in-out ${
-            splashLeaving ? "pointer-events-none opacity-0" : "opacity-100"
-          }`}
-          style={{ transitionDuration: `${SPLASH_TRANSITION_MS}ms` }}
-          aria-hidden="true"
-        >
-          <img
-            src="/logo.jpg"
-            alt=""
-            className={`object-contain transition-all ease-in-out ${
-              splashLeaving ? "h-24 w-24 scale-90 opacity-0" : "h-56 w-56 scale-100 opacity-100"
-            }`}
-            style={{ transitionDuration: `${SPLASH_TRANSITION_MS}ms` }}
-          />
-        </div>
-      )}
+      <SplashIntro onLeaveStart={() => setSplashDone(true)} />
 
       <div
         className={`w-full max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-sm transition-opacity duration-500 ${
-          splashLeaving ? "opacity-100" : "opacity-0"
+          splashDone ? "opacity-100" : "opacity-0"
         }`}
       >
         <div className="mb-6 flex flex-col items-center gap-2">
