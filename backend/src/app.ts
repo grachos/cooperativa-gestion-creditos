@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import { env } from "./config/env.js";
 import { errorHandler, notFoundHandler } from "./middlewares/error.middleware.js";
 import { authRouter } from "./modules/auth/auth.routes.js";
@@ -32,6 +33,19 @@ app.use(express.json({ limit: "1mb" }));
 
 app.get("/health", (_req, res) => res.json({ status: "ok" }));
 
+// Límite por IP en autenticación (complementa el bloqueo por cuenta del
+// login): frena la prueba de contraseñas en muchas cuentas y el abuso del
+// correo de restablecimiento.
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 40,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "Demasiadas solicitudes. Intenta de nuevo en unos minutos." }
+});
+app.use("/api/v1/auth/login", authLimiter);
+app.use("/api/v1/auth/forgot-password", authLimiter);
+app.use("/api/v1/auth/reset-password", authLimiter);
 app.use("/api/v1/auth", authRouter);
 app.use("/api/v1/associates", associatesRouter);
 app.use("/api/v1/societies", societiesRouter);

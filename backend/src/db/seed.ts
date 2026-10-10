@@ -136,6 +136,9 @@ async function seedParameters() {
 }
 
 async function run() {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("El seed de demostración no puede ejecutarse en producción (crea usuarios con contraseña pública).");
+  }
   const roleIds = await upsertRolesAndPermissions();
   await seedParameters();
 

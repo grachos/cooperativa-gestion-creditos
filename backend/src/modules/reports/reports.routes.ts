@@ -1,11 +1,11 @@
 import { Router } from "express";
 import { pool } from "../../db/pool.js";
-import { requireAuth } from "../../middlewares/auth.middleware.js";
+import { requireAuth, requirePermission } from "../../middlewares/auth.middleware.js";
 import { asyncHandler, HttpError } from "../../middlewares/error.middleware.js";
 import { getMoraBucket, loadMoraBuckets } from "../delinquency/delinquency.service.js";
 
 export const reportsRouter = Router();
-reportsRouter.use(requireAuth);
+reportsRouter.use(requireAuth, requirePermission("reports:read"));
 
 reportsRouter.get(
   "/dashboard",

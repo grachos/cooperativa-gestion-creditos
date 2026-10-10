@@ -87,6 +87,9 @@ authRouter.post(
 
     const access = await loadUserWithAccess(dbUser.id);
     if (!access) throw new HttpError(401, "Credenciales inválidas");
+    if (access.permissions.length === 0) {
+      throw new HttpError(403, "Tu usuario no tiene acceso al sistema. Contacta al administrador.");
+    }
 
     const accessToken = signAccessToken({
       sub: dbUser.id,
@@ -218,7 +221,7 @@ authRouter.post(
     if (!matches) throw new HttpError(401, "Sesión inválida");
 
     const access = await loadUserWithAccess(dbUser.id);
-    if (!access) throw new HttpError(401, "Sesión inválida");
+    if (!access || access.permissions.length === 0) throw new HttpError(401, "Sesión inválida");
 
     const accessToken = signAccessToken({
       sub: dbUser.id,

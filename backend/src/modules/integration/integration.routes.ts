@@ -1,11 +1,11 @@
 import { Router } from "express";
 import { pool } from "../../db/pool.js";
-import { requireAuth, requirePermission } from "../../middlewares/auth.middleware.js";
+import { requireAnyPermission, requireAuth, requirePermission } from "../../middlewares/auth.middleware.js";
 import { asyncHandler, HttpError } from "../../middlewares/error.middleware.js";
 import { idParam, paginationQuery } from "../../shared/schemas.js";
 
 export const integrationRouter = Router();
-integrationRouter.use(requireAuth);
+integrationRouter.use(requireAuth, requireAnyPermission("integration:write", "audit:read"));
 
 integrationRouter.get(
   "/events",

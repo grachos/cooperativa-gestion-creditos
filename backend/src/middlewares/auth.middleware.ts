@@ -22,11 +22,25 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
   }
   try {
     const payload = verifyAccessToken(token);
+    // Un usuario sin roles (p. ej. un gestor/vendedor asignable pero sin
+    // acceso al sistema) no debe poder leer nada, ni con un token válido.
+    if (!payload.permissions || payload.permissions.length === 0) {
+      return res.status(403).json({ error: "Tu usuario no tiene acceso al sistema" });
+    }
     req.user = { id: payload.sub, roles: payload.roles, permissions: payload.permissions };
     next();
   } catch {
     return res.status(401).json({ error: "Token inválido o expirado" });
   }
+}
+
+export function requireAnyPermission(...permissions: string[]) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!permissions.some((p) => req.user?.permissions.includes(p))) {
+      return res.status(403).json({ error: "No autorizado para esta acción" });
+    }
+    next();
+  };
 }
 
 export function requirePermission(permission: string) {
