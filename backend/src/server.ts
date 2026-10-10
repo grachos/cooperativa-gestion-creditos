@@ -3,13 +3,19 @@ import { env } from "./config/env.js";
 import { runMigrations } from "./db/migrate.js";
 import { recalculateAlerts } from "./modules/alerts/alerts.service.js";
 
-if (env.AUTO_MIGRATE) {
-  await runMigrations();
-}
+// Sin top-level await: el hosting carga este archivo con require().
+const ready = env.AUTO_MIGRATE ? runMigrations() : Promise.resolve();
 
-app.listen(env.PORT, () => {
-  console.log(`Backend cooperativa escuchando en puerto ${env.PORT}`);
-});
+ready
+  .then(() => {
+    app.listen(env.PORT, () => {
+      console.log(`Backend cooperativa escuchando en puerto ${env.PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error("No se pudo iniciar el backend", err);
+    process.exit(1);
+  });
 
 // Job diario de mora/alertas (equivale al Vercel Cron). 11:00 UTC = 06:00
 // Colombia. Revisa cada 10 min y corre una sola vez por día.
