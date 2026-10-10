@@ -23,7 +23,7 @@ reportsRouter.get(
       ),
       pool.query<any[]>(
         `SELECT COALESCE(SUM(amount), 0) as "pagosPeriodo"
-         FROM payments WHERE status = 'CONFIRMADO' AND received_date >= CURRENT_DATE - INTERVAL '30 days'`
+         FROM payments WHERE status = 'CONFIRMADO' AND received_date >= CURRENT_DATE - INTERVAL 30 DAY`
       ),
       pool.query<any[]>(
         `SELECT COUNT(*) as "solicitudesPendientes" FROM credit_applications WHERE status IN ('RADICADA','EN_REVISION')`
@@ -144,33 +144,33 @@ reportsRouter.get(
     const month = req.query.month ? Number(req.query.month) : null;
 
     const conditions: string[] = [];
-    if (year) conditions.push("EXTRACT(YEAR FROM m.month) = ?");
-    if (month) conditions.push("EXTRACT(MONTH FROM m.month) = ?");
+    if (year) conditions.push("YEAR(m.month) = ?");
+    if (month) conditions.push("MONTH(m.month) = ?");
     const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
     const args = [year, month].filter((v): v is number => v !== null);
 
     const [rows] = await pool.query<any[]>(
       `WITH disb AS (
-         SELECT date_trunc('month', disbursement_date)::date AS month,
+         SELECT DATE(DATE_FORMAT(disbursement_date, '%Y-%m-01')) AS month,
                 COUNT(*) AS credits_disbursed,
                 SUM(disbursed_amount) AS disbursed_amount
          FROM credits GROUP BY 1
        ),
        cancel AS (
-         SELECT date_trunc('month', updated_at)::date AS month,
+         SELECT DATE(DATE_FORMAT(updated_at, '%Y-%m-01')) AS month,
                 COUNT(*) AS credits_cancelled,
                 SUM(disbursed_amount) AS cancelled_amount
          FROM credits WHERE status = 'PAGADO' GROUP BY 1
        ),
        due AS (
-         SELECT date_trunc('month', due_date)::date AS month,
+         SELECT DATE(DATE_FORMAT(due_date, '%Y-%m-01')) AS month,
                 COUNT(*) AS installments_due,
                 SUM(total_due) AS due_amount,
-                COUNT(*) FILTER (WHERE status = 'PAGADA') AS installments_paid
+                SUM(CASE WHEN status = 'PAGADA' THEN 1 ELSE 0 END) AS installments_paid
          FROM credit_schedule_installments WHERE status != 'ANULADA' GROUP BY 1
        ),
        recaudo AS (
-         SELECT date_trunc('month', received_date)::date AS month,
+         SELECT DATE(DATE_FORMAT(received_date, '%Y-%m-01')) AS month,
                 SUM(amount) AS collected_amount
          FROM payments WHERE status = 'CONFIRMADO' GROUP BY 1
        ),
@@ -251,15 +251,15 @@ reportsRouter.get(
 
     const [rows] = await pool.query<any[]>(
       `WITH bounds AS (
-         SELECT ?::date AS month_start,
-                (?::date + INTERVAL '1 month' - INTERVAL '1 day')::date AS month_end
+         SELECT CAST(? AS DATE) AS month_start,
+                LAST_DAY(CAST(? AS DATE)) AS month_end
        ),
        open_credits AS (
          SELECT c.id, c.credit_number, c.disbursed_amount, c.term_value,
                 c.first_installment_date, c.titular_associate_id, c.titular_society_id
          FROM credits c, bounds b
          WHERE c.disbursement_date <= b.month_end
-           AND NOT (c.status = 'PAGADO' AND c.updated_at::date <= b.month_start - INTERVAL '1 day')
+           AND NOT (c.status = 'PAGADO' AND DATE(c.updated_at) <= DATE_SUB(b.month_start, INTERVAL 1 DAY))
        ),
        schedule_totals AS (
          SELECT credit_id,
@@ -267,16 +267,14 @@ reportsRouter.get(
                 SUM(principal_due) AS total_principal,
                 SUM(interest_due) AS total_interest,
                 SUM(total_due) AS total_due,
-                MIN(total_due) FILTER (WHERE installment_number = 1) AS installment_value
+                MIN(CASE WHEN installment_number = 1 THEN total_due END) AS installment_value
          FROM credit_schedule_installments
          WHERE status != 'ANULADA'
          GROUP BY credit_id
        ),
        per_installment_paid AS (
          SELECT csi.id, csi.credit_id, csi.total_due,
-                COALESCE(SUM(pa.amount) FILTER (
-                  WHERE pa.concept IN ('CAPITAL','INTERES') AND p.status = 'CONFIRMADO' AND p.received_date <= (SELECT month_end FROM bounds)
-                ), 0) AS paid_to_date,
+                COALESCE(SUM(CASE WHEN pa.concept IN ('CAPITAL','INTERES') AND p.status = 'CONFIRMADO' AND p.received_date <= (SELECT month_end FROM bounds) THEN pa.amount END), 0) AS paid_to_date,
                 (csi.due_date <= (SELECT month_end FROM bounds)) AS was_due
          FROM credit_schedule_installments csi
          LEFT JOIN payment_allocations pa ON pa.installment_id = csi.id
@@ -286,15 +284,15 @@ reportsRouter.get(
        ),
        installments_agg AS (
          SELECT credit_id,
-                COUNT(*) FILTER (WHERE paid_to_date >= total_due - 0.01) AS installments_paid,
-                COUNT(*) FILTER (WHERE was_due AND paid_to_date < total_due - 0.01) AS installments_overdue
+                SUM(CASE WHEN paid_to_date >= total_due - 0.01 THEN 1 ELSE 0 END) AS installments_paid,
+                SUM(CASE WHEN was_due AND paid_to_date < total_due - 0.01 THEN 1 ELSE 0 END) AS installments_overdue
          FROM per_installment_paid
          GROUP BY credit_id
        ),
        paid_to_date AS (
          SELECT csi.credit_id,
-                COALESCE(SUM(pa.amount) FILTER (WHERE pa.concept = 'CAPITAL'), 0) AS capital_paid_to_date,
-                COALESCE(SUM(pa.amount) FILTER (WHERE pa.concept = 'INTERES'), 0) AS interest_paid_to_date
+                COALESCE(SUM(CASE WHEN pa.concept = 'CAPITAL' THEN pa.amount END), 0) AS capital_paid_to_date,
+                COALESCE(SUM(CASE WHEN pa.concept = 'INTERES' THEN pa.amount END), 0) AS interest_paid_to_date
          FROM credit_schedule_installments csi
          JOIN payment_allocations pa ON pa.installment_id = csi.id
          JOIN payments p ON p.id = pa.payment_id AND p.status = 'CONFIRMADO'
@@ -303,8 +301,8 @@ reportsRouter.get(
        ),
        collected_this_month AS (
          SELECT csi.credit_id,
-                COALESCE(SUM(pa.amount) FILTER (WHERE pa.concept = 'CAPITAL'), 0) AS capital_collected_month,
-                COALESCE(SUM(pa.amount) FILTER (WHERE pa.concept = 'INTERES'), 0) AS interest_collected_month,
+                COALESCE(SUM(CASE WHEN pa.concept = 'CAPITAL' THEN pa.amount END), 0) AS capital_collected_month,
+                COALESCE(SUM(CASE WHEN pa.concept = 'INTERES' THEN pa.amount END), 0) AS interest_collected_month,
                 COALESCE(SUM(pa.amount), 0) AS total_collected_month
          FROM credit_schedule_installments csi
          JOIN payment_allocations pa ON pa.installment_id = csi.id

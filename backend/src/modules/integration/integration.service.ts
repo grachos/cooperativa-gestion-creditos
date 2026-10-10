@@ -18,7 +18,7 @@ export async function enqueueIntegrationEvent(
   await conn.query(
     `INSERT INTO integration_events (event_type, idempotency_key, payload, status)
      VALUES (?, ?, ?, 'PENDIENTE')
-     ON CONFLICT (idempotency_key) DO NOTHING`,
+     ON DUPLICATE KEY UPDATE idempotency_key = idempotency_key`,
     [eventType, key, JSON.stringify(payload)]
   );
 }

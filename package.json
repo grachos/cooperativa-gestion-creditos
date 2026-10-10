@@ -1,5 +1,9 @@
 {
   "name": "cooperativa-gestion-creditos",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "scripts": {
+    "build": "npm --prefix frontend ci && npm --prefix frontend run build && npm --prefix backend ci && npm --prefix backend run build",
+    "start": "node backend/dist/server.js"
+  }
 }

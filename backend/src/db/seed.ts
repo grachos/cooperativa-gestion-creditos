@@ -37,7 +37,7 @@ const ROLES: Record<string, string[]> = {
 async function upsertRolesAndPermissions() {
   const permissionIds: Record<string, number> = {};
   for (const code of PERMISSIONS) {
-    await pool.query(`INSERT INTO permissions (code) VALUES (?) ON CONFLICT (code) DO NOTHING`, [code]);
+    await pool.query(`INSERT IGNORE INTO permissions (code) VALUES (?)`, [code]);
     const [rows] = await pool.query<any[]>(`SELECT id FROM permissions WHERE code = ?`, [code]);
     permissionIds[code] = (rows as any[])[0].id;
   }
@@ -51,7 +51,7 @@ async function upsertRolesAndPermissions() {
     CONSULTA: "Consulta"
   })) {
     await pool.query(
-      `INSERT INTO roles (code, name) VALUES (?, ?) ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name`,
+      `INSERT INTO roles (code, name) VALUES (?, ?) ON DUPLICATE KEY UPDATE name = VALUES(name)`,
       [code, name]
     );
     const [rows] = await pool.query<any[]>(`SELECT id FROM roles WHERE code = ?`, [code]);
@@ -61,8 +61,7 @@ async function upsertRolesAndPermissions() {
   for (const [roleCode, perms] of Object.entries(ROLES)) {
     for (const perm of perms) {
       await pool.query(
-        `INSERT INTO role_permissions (role_id, permission_id) VALUES (?, ?)
-         ON CONFLICT (role_id, permission_id) DO NOTHING`,
+        `INSERT IGNORE INTO role_permissions (role_id, permission_id) VALUES (?, ?)`,
         [roleIds[roleCode], permissionIds[perm]]
       );
     }
@@ -77,13 +76,13 @@ async function upsertUser(email: string, username: string, fullName: string, rol
   await pool.query(
     `INSERT INTO users (email, username, password_hash, full_name)
      VALUES (?, ?, ?, ?)
-     ON CONFLICT (email) DO UPDATE SET full_name = EXCLUDED.full_name`,
+     ON DUPLICATE KEY UPDATE full_name = VALUES(full_name)`,
     [email, username, passwordHash, fullName]
   );
   const [rows] = await pool.query<any[]>(`SELECT id FROM users WHERE email = ?`, [email]);
   const userId = (rows as any[])[0].id;
   await pool.query(
-    `INSERT INTO user_roles (user_id, role_id) VALUES (?, ?) ON CONFLICT (user_id, role_id) DO NOTHING`,
+    `INSERT IGNORE INTO user_roles (user_id, role_id) VALUES (?, ?)`,
     [userId, roleId]
   );
   return userId;
@@ -130,8 +129,7 @@ async function seedParameters() {
   };
   for (const [key, { value, description }] of Object.entries(params)) {
     await pool.query(
-      `INSERT INTO parameters (\`key\`, value, description) VALUES (?, ?, ?)
-       ON CONFLICT ("key") DO NOTHING`,
+      `INSERT IGNORE INTO parameters (\`key\`, value, description) VALUES (?, ?, ?)`,
       [key, JSON.stringify(value), description]
     );
   }
@@ -150,7 +148,7 @@ async function run() {
   await pool.query(
     `INSERT INTO associates (id_type, id_number, first_name, last_name, phone, email, municipality, department, data_consent, created_by)
      VALUES ('CC', '1000111222', 'Laura', 'Gómez Pérez', '3001234567', 'laura.gomez@demo.co', 'Bogotá', 'Bogotá D.C.', TRUE, ?)
-     ON CONFLICT (id_type, id_number) DO UPDATE SET first_name = EXCLUDED.first_name`,
+     ON DUPLICATE KEY UPDATE first_name = VALUES(first_name)`,
     [adminId]
   );
   const [assocRows] = await pool.query<any[]>(
@@ -161,7 +159,7 @@ async function run() {
   await pool.query(
     `INSERT INTO associates (id_type, id_number, first_name, last_name, phone, email, municipality, department, data_consent, created_by)
      VALUES ('CC', '1000333444', 'Carlos', 'Ramírez Ruiz', '3007654321', 'carlos.ramirez@demo.co', 'Medellín', 'Antioquia', TRUE, ?)
-     ON CONFLICT (id_type, id_number) DO UPDATE SET first_name = EXCLUDED.first_name`,
+     ON DUPLICATE KEY UPDATE first_name = VALUES(first_name)`,
     [adminId]
   );
   const [coDebtorSelect] = await pool.query<any[]>(
@@ -172,7 +170,7 @@ async function run() {
   const [appResult] = await pool.query<any>(
     `INSERT INTO credit_applications
       (titular_associate_id, requested_amount, term_value, interest_rate, rate_type, expected_disbursement_date, purpose, status, created_by, decided_by, decided_at)
-     VALUES (?, 5000000, 12, 4, 'NOMINAL_MENSUAL', CURRENT_DATE, 'Libre inversión', 'APROBADA', ?, ?, now())`,
+     VALUES (?, 5000000, 12, 4, 'NOMINAL_MENSUAL', CURRENT_DATE, 'Libre inversión', 'APROBADA', ?, ?, NOW())`,
     [associateId, adminId, adminId]
   );
   const applicationId = appResult.insertId;
@@ -272,7 +270,7 @@ async function run() {
   // Compromiso de pago y ajuste de demostración (hallazgos del Excel real).
   await pool.query(
     `INSERT INTO collection_actions (credit_id, action_type, description, promise_date, promise_status, created_by)
-     VALUES (?, 'GESTION_COBRO', 'Cliente promete pagar la cuota 2', CURRENT_DATE + INTERVAL '3 days', 'PENDIENTE', ?)`,
+     VALUES (?, 'GESTION_COBRO', 'Cliente promete pagar la cuota 2', DATE_ADD(CURRENT_DATE, INTERVAL 3 DAY), 'PENDIENTE', ?)`,
     [creditId, operadorId]
   );
   await pool.query(

@@ -1,43 +1,46 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { pool } from "./pool.js";
+import mysql from "mysql2/promise";
+import { env } from "../config/env.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// Conexión propia con multipleStatements: cada migración trae varias
+// sentencias. El pool de la app NO lo habilita (evita consultas apiladas).
 async function run() {
-  await pool.query(
+  const conn = await mysql.createConnection({
+    host: env.DB_HOST,
+    port: env.DB_PORT,
+    user: env.DB_USER,
+    password: env.DB_PASSWORD,
+    database: env.DB_NAME,
+    charset: "utf8mb4",
+    multipleStatements: true
+  });
+
+  await conn.query(
     `CREATE TABLE IF NOT EXISTS schema_migrations (
       name VARCHAR(160) PRIMARY KEY,
       applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )`
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
   );
 
-  const dir = path.join(__dirname, "migrations");
+  const dir = path.join(__dirname, "mysql", "migrations");
   const files = fs.readdirSync(dir).filter((f) => f.endsWith(".sql")).sort();
 
-  const [appliedRows] = await pool.query<any[]>("SELECT name FROM schema_migrations");
+  const [appliedRows] = await conn.query("SELECT name FROM schema_migrations");
   const applied = new Set((appliedRows as any[]).map((r) => r.name));
 
   for (const file of files) {
     if (applied.has(file)) continue;
-    const sql = fs.readFileSync(path.join(dir, file), "utf8");
-    const conn = await pool.getConnection();
-    try {
-      // Se ejecuta el archivo completo en una sola sentencia: Postgres
-      // soporta múltiples statements separados por ";" en una sola consulta
-      // (protocolo simple), y así no se rompen los cuerpos de función
-      // delimitados con $$ ... $$ que sí contienen punto y coma.
-      await conn.query(sql);
-      await conn.query("INSERT INTO schema_migrations (name) VALUES (?)", [file]);
-      console.log(`Aplicada migración: ${file}`);
-    } finally {
-      conn.release();
-    }
+    await conn.query(fs.readFileSync(path.join(dir, file), "utf8"));
+    await conn.query("INSERT INTO schema_migrations (name) VALUES (?)", [file]);
+    console.log(`Aplicada migración: ${file}`);
   }
 
   console.log("Migraciones completadas.");
-  await pool.end();
+  await conn.end();
 }
 
 run().catch((err) => {

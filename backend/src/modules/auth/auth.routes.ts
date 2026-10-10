@@ -62,10 +62,10 @@ authRouter.post(
     const [failedRows] = await pool.query<any[]>(
       `SELECT COUNT(*) AS total FROM login_activity
        WHERE user_id = ? AND event_type = 'LOGIN_FAILED'
-         AND created_at > now() - make_interval(mins => ?)
+         AND created_at > NOW() - INTERVAL ? MINUTE
          AND created_at > COALESCE(
            (SELECT MAX(created_at) FROM login_activity WHERE user_id = ? AND event_type = 'LOGIN'),
-           'epoch'::timestamptz
+           '1970-01-01 00:00:01'
          )`,
       [dbUser.id, LOGIN_LOCK_WINDOW_MIN, dbUser.id]
     );
@@ -133,7 +133,7 @@ authRouter.post(
     if (dbUser) {
       const [recentRows] = await pool.query<any[]>(
         `SELECT COUNT(*) AS total FROM password_reset_tokens
-         WHERE user_id = ? AND created_at > now() - interval '1 hour'`,
+         WHERE user_id = ? AND created_at > NOW() - INTERVAL 1 HOUR`,
         [dbUser.id]
       );
       underLimit = Number((recentRows as any[])[0].total) < MAX_RESET_EMAILS_PER_HOUR;
@@ -176,7 +176,7 @@ authRouter.post(
 
     const [rows] = await pool.query<any[]>(
       `SELECT * FROM password_reset_tokens
-       WHERE user_id = ? AND used_at IS NULL AND expires_at > now()
+       WHERE user_id = ? AND used_at IS NULL AND expires_at > NOW()
        ORDER BY id DESC`,
       [uid]
     );
@@ -195,7 +195,7 @@ authRouter.post(
       passwordHash,
       uid
     ]);
-    await pool.query(`UPDATE password_reset_tokens SET used_at = now() WHERE id = ?`, [matchedTokenId]);
+    await pool.query(`UPDATE password_reset_tokens SET used_at = NOW() WHERE id = ?`, [matchedTokenId]);
 
     res.status(204).send();
   })

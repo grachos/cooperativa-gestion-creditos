@@ -5,19 +5,16 @@ const envSchema = z
   .object({
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
     PORT: z.coerce.number().default(4000),
-    // Producción/Supabase: una sola cadena de conexión Postgres.
-    DATABASE_URL: z.string().min(1).optional(),
-    // Por defecto SIN SSL (Postgres local / docker-compose no trae
-    // certificados configurados). Se activa explícitamente con
-    // DATABASE_SSL=true, como en producción/Supabase.
+    // Por defecto SIN SSL (MySQL local / Hostinger se conecta por 127.0.0.1).
+    // Se activa explícitamente con DATABASE_SSL=true.
     DATABASE_SSL: z
       .string()
       .optional()
       .transform((v) => v === "true"),
-    // Desarrollo local sin Supabase: Postgres por variables sueltas.
-    DB_HOST: z.string().default("localhost"),
-    DB_PORT: z.coerce.number().default(5432),
-    DB_USER: z.string().default("postgres"),
+    // MySQL/MariaDB. En Hostinger: DB_HOST=127.0.0.1, DB_PORT=3306.
+    DB_HOST: z.string().default("127.0.0.1"),
+    DB_PORT: z.coerce.number().default(3306),
+    DB_USER: z.string().default("root"),
     DB_PASSWORD: z.string().default(""),
     DB_NAME: z.string().default("cooperativa_creditos"),
     JWT_ACCESS_SECRET: z.string().min(10),
@@ -43,10 +40,17 @@ const envSchema = z
     // Vercel Cron lo envía como "Authorization: Bearer <CRON_SECRET>" al
     // invocar el job diario de mora/alertas. Sin definirlo, el job queda
     // deshabilitado (responde 401).
+    // Carpeta del frontend compilado (frontend/dist). Si existe, el mismo
+    // proceso Node lo sirve junto con la API (despliegue en Hostinger).
+    STATIC_DIR: z.string().optional(),
+    // Ejecuta el job diario de mora/alertas dentro del proceso (a las 06:00
+    // hora Colombia), en vez de depender de Vercel Cron.
+    INTERNAL_CRON: z
+      .string()
+      .optional()
+      .transform((v) => v === "true"),
     CRON_SECRET: z.string().min(16).optional()
   })
-  .refine((v) => v.DATABASE_URL || (v.DB_HOST && v.DB_NAME), {
-    message: "Debe definirse DATABASE_URL o DB_HOST/DB_NAME"
-  });
+  ;
 
 export const env = envSchema.parse(process.env);

@@ -98,15 +98,17 @@ usersRouter.get(
     const [rows] = await pool.query<any[]>(
       `SELECT u.id, u.full_name, u.email, u.username, u.status,
               u.id_type, u.id_number, u.phone, u.address,
-              COALESCE(
-                (SELECT json_agg(r.code ORDER BY r.code)
-                 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
-                 WHERE ur.user_id = u.id),
-                '[]'
-              ) AS role_codes
+              (SELECT GROUP_CONCAT(r.code ORDER BY r.code SEPARATOR ',')
+               FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+               WHERE ur.user_id = u.id) AS role_codes
        FROM users u ORDER BY u.full_name ASC`
     );
-    res.json({ data: rows });
+    res.json({
+      data: (rows as any[]).map((r) => ({
+        ...r,
+        role_codes: r.role_codes ? String(r.role_codes).split(",") : []
+      }))
+    });
   })
 );
 
