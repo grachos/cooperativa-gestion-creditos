@@ -41,6 +41,7 @@ function EditUserRow({ user, roles }: { user: ManagedUser; roles: Role[] }) {
   const [rowError, setRowError] = useState<string | null>(null);
   const [rowSuccess, setRowSuccess] = useState<string | null>(null);
   const [contact, setContact] = useState({
+    email: user.email ?? "",
     idType: user.id_type ?? "",
     idNumber: user.id_number ?? "",
     phone: user.phone ?? "",
@@ -80,6 +81,7 @@ function EditUserRow({ user, roles }: { user: ManagedUser; roles: Role[] }) {
   function saveContact() {
     patchUser.mutate(
       {
+        email: contact.email.trim() || undefined,
         idType: contact.idType || undefined,
         idNumber: contact.idNumber || undefined,
         phone: contact.phone || undefined,
@@ -169,6 +171,14 @@ function EditUserRow({ user, roles }: { user: ManagedUser; roles: Role[] }) {
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-2">
+        <input
+          type="email"
+          placeholder="Correo"
+          autoComplete="off"
+          value={contact.email}
+          onChange={(e) => setContact({ ...contact, email: e.target.value })}
+          className="w-56 rounded-md border border-slate-300 px-2 py-1 text-xs"
+        />
         <select
           className="rounded-md border border-slate-300 px-2 py-1 text-xs"
           value={contact.idType}

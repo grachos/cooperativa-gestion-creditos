@@ -131,6 +131,11 @@ usersRouter.patch(
           [data.status, data.status, id]
         );
       }
+      if (data.email) {
+        const [dup] = await conn.query<any[]>(`SELECT id FROM users WHERE email = ? AND id <> ?`, [data.email, id]);
+        if ((dup as any[]).length > 0) throw new HttpError(409, "Ese correo ya está en uso por otro usuario");
+        await conn.query(`UPDATE users SET email = ? WHERE id = ?`, [data.email, id]);
+      }
       if (data.password) {
         const passwordHash = await bcrypt.hash(data.password, 10);
         await conn.query(`UPDATE users SET password_hash = ?, refresh_token_hash = NULL WHERE id = ?`, [
@@ -167,6 +172,7 @@ usersRouter.patch(
       newValue: {
         status: data.status,
         roleCodes: data.roleCodes,
+        email: data.email,
         passwordChanged: Boolean(data.password),
         idType: data.idType,
         idNumber: data.idNumber,

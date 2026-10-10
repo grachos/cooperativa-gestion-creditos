@@ -146,6 +146,7 @@ export const createUserSchema = z.object({
 });
 
 export const updateUserSchema = z.object({
+  email: z.string().trim().email().max(160).optional(),
   status: z.enum(["ACTIVO", "INACTIVO"]).optional(),
   roleCodes: z.array(z.string()).optional(),
   password: z.string().min(8).max(72).optional(),
