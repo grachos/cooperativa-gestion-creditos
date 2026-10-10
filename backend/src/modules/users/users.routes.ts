@@ -131,6 +131,9 @@ usersRouter.patch(
           [data.status, data.status, id]
         );
       }
+      if (data.fullName) {
+        await conn.query(`UPDATE users SET full_name = ? WHERE id = ?`, [data.fullName, id]);
+      }
       if (data.email) {
         const [dup] = await conn.query<any[]>(`SELECT id FROM users WHERE email = ? AND id <> ?`, [data.email, id]);
         if ((dup as any[]).length > 0) throw new HttpError(409, "Ese correo ya está en uso por otro usuario");
@@ -172,6 +175,7 @@ usersRouter.patch(
       newValue: {
         status: data.status,
         roleCodes: data.roleCodes,
+        fullName: data.fullName,
         email: data.email,
         passwordChanged: Boolean(data.password),
         idType: data.idType,
