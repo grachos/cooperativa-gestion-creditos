@@ -8,7 +8,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Conexión propia con multipleStatements: cada migración trae varias
 // sentencias. El pool de la app NO lo habilita (evita consultas apiladas).
-async function run() {
+export async function runMigrations() {
   const conn = await mysql.createConnection({
     host: env.DB_HOST,
     port: env.DB_PORT,
@@ -26,7 +26,10 @@ async function run() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
   );
 
-  const dir = path.join(__dirname, "mysql", "migrations");
+  // Misma ruta tanto con tsx (src/db) como compilado (dist/db): los .sql
+  // viven en src y tsc no los copia.
+  const mysqlDir = path.resolve(__dirname, "../../src/db/mysql");
+  const dir = path.join(mysqlDir, "migrations");
   const files = fs.readdirSync(dir).filter((f) => f.endsWith(".sql")).sort();
 
   const [appliedRows] = await conn.query("SELECT name FROM schema_migrations");
@@ -39,11 +42,34 @@ async function run() {
     console.log(`Aplicada migración: ${file}`);
   }
 
+  // Datos mínimos (roles, permisos, parámetros). Repetible: nunca pisa
+  // parámetros ya editados.
+  await conn.query(fs.readFileSync(path.join(mysqlDir, "seed_base.sql"), "utf8"));
+
+  // Primer administrador: solo si aún no hay usuarios y se entregó el hash
+  // de la contraseña (ADMIN_PASSWORD_HASH) por variable de entorno.
+  if (env.ADMIN_PASSWORD_HASH) {
+    const [users] = await conn.query("SELECT COUNT(*) AS total FROM users");
+    if (Number((users as any[])[0].total) === 0) {
+      const email = env.ADMIN_EMAIL ?? "admin@coomulnissi.cc";
+      await conn.query("INSERT INTO users (email, username, password_hash, full_name) VALUES (?, 'admin', ?, 'Administrador')", [
+        email,
+        env.ADMIN_PASSWORD_HASH
+      ]);
+      await conn.query(
+        "INSERT INTO user_roles (user_id, role_id) SELECT u.id, r.id FROM users u, roles r WHERE u.username = 'admin' AND r.code = 'ADMIN'"
+      );
+      console.log(`Administrador inicial creado: ${email}`);
+    }
+  }
+
   console.log("Migraciones completadas.");
   await conn.end();
 }
 
-run().catch((err) => {
-  console.error("Error ejecutando migraciones", err);
-  process.exit(1);
-});
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  runMigrations().catch((err) => {
+    console.error("Error ejecutando migraciones", err);
+    process.exit(1);
+  });
+}

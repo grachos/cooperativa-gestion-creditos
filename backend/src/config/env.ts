@@ -49,6 +49,13 @@ const envSchema = z
       .string()
       .optional()
       .transform((v) => v === "true"),
+    // Al arrancar, aplica migraciones + datos base (idempotente).
+    AUTO_MIGRATE: z
+      .string()
+      .optional()
+      .transform((v) => v === "true"),
+    ADMIN_EMAIL: z.string().optional(),
+    ADMIN_PASSWORD_HASH: z.string().optional(),
     CRON_SECRET: z.string().min(16).optional()
   })
   ;

@@ -1,6 +1,11 @@
 import { app } from "./app.js";
 import { env } from "./config/env.js";
+import { runMigrations } from "./db/migrate.js";
 import { recalculateAlerts } from "./modules/alerts/alerts.service.js";
+
+if (env.AUTO_MIGRATE) {
+  await runMigrations();
+}
 
 app.listen(env.PORT, () => {
   console.log(`Backend cooperativa escuchando en puerto ${env.PORT}`);
