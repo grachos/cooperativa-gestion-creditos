@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -47,8 +48,11 @@ app.use("/api/v1/integration", integrationRouter);
 app.use("/api/v1/users", usersRouter);
 
 // Frontend compilado (SPA): lo sirve el mismo proceso cuando STATIC_DIR existe.
-if (env.STATIC_DIR && fs.existsSync(env.STATIC_DIR)) {
-  const staticDir = path.resolve(env.STATIC_DIR);
+// Por defecto busca ../frontend/dist relativo al backend compilado.
+const staticDir = path.resolve(
+  env.STATIC_DIR ?? path.join(path.dirname(fileURLToPath(import.meta.url)), "../../frontend/dist")
+);
+if (fs.existsSync(path.join(staticDir, "index.html"))) {
   app.use(express.static(staticDir, { index: false, maxAge: "1h" }));
   app.get(/^\/(?!api\/).*/, (_req, res) => res.sendFile(path.join(staticDir, "index.html")));
 }
