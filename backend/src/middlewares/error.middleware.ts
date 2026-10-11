@@ -30,6 +30,18 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
   if (err instanceof HttpError) {
     return res.status(err.status).json(err.code ? { error: err.message, code: err.code } : { error: err.message });
   }
+  // Llave única violada (p. ej. dos peticiones simultáneas, o editar un asociado
+  // con una identificación que ya existe): es un conflicto, no un error interno.
+  const dup = err as { errno?: number; sqlMessage?: string };
+  if (dup?.errno === 1062) {
+    const detail = dup.sqlMessage ?? "";
+    const message = detail.includes("uq_associate_identification")
+      ? "Ya existe un asociado con esta identificación"
+      : detail.includes("uq_society_tax_id")
+        ? "Ya existe una sociedad con este NIT"
+        : "Ya existe un registro con esos datos";
+    return res.status(409).json({ error: message });
+  }
   console.error(err);
   return res.status(500).json({ error: "Error interno del servidor" });
 }
