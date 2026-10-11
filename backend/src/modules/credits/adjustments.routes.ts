@@ -4,6 +4,7 @@ import { adjustmentSchema, idParam } from "../../shared/schemas.js";
 import { asyncHandler, HttpError } from "../../middlewares/error.middleware.js";
 import { requireAuth, requirePermission } from "../../middlewares/auth.middleware.js";
 import { recordAudit } from "../audit/audit.service.js";
+import { idempotent } from "../../middlewares/idempotent.js";
 
 /**
  * Ajustes manuales por crédito: interés por cambio de fecha, descuentos
@@ -18,6 +19,7 @@ adjustmentsRouter.use(requireAuth);
 adjustmentsRouter.post(
   "/:id/adjustments",
   requirePermission("adjustments:write"),
+  idempotent("credits.adjustment"),
   asyncHandler(async (req, res) => {
     const { id } = idParam.parse(req.params);
     const data = adjustmentSchema.parse(req.body);

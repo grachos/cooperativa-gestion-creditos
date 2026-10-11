@@ -369,3 +369,89 @@ antes de pasar a producción (no bloquean el prototipo):
   formato de esa integración no ha sido definido por la contadora.
 - La replicación geográfica y el nivel de disponibilidad dependen del
   proveedor de hosting que la cooperativa apruebe; no se asume ninguno.
+
+## Idempotencia: evitar registros duplicados (`Idempotency-Key`)
+
+Una misma acción del usuario (doble clic, Enter repetido, reintento de red,
+timeout, recarga) no debe crear dos registros. Se resuelve en dos capas.
+
+### Operaciones protegidas (servidor)
+
+El middleware `idempotent("operación")` (`backend/src/middlewares/idempotency.ts`)
+está aplicado solo donde un reintento duplicaría un efecto:
+
+| Operación | Ruta | Transaccional* |
+|---|---|---|
+| `payments.create` | `POST /payments` | sí |
+| `credits.disburse` | `POST /credits/applications/:id/disburse` | sí |
+| `credits.refinance` | `POST /credits/:id/refinance` | sí |
+| `credits.adjustment` | `POST /credits/:id/adjustments` | no |
+| `credits.promise` | `POST /credits/:id/promises` | no |
+| `applications.create` | `POST /applications` | no |
+| `associates.create` | `POST /associates` | no |
+| `societies.create` | `POST /societies` | no |
+| `users.create` | `POST /users` | no |
+| `parameters.create` | `POST /parameters` | no |
+
+\* Si todo el efecto ocurre en una sola transacción, un 5xx implica que no hubo
+efecto y la clave se libera. En las demás un 5xx deja el resultado **incierto**
+(el INSERT pudo confirmarse antes de fallar el registro de auditoría): la clave se
+conserva y el reintento recibe `409 IDEMPOTENCY_IN_PROGRESS` hasta que venza.
+
+No se protegieron las transiciones que el servidor ya rechaza por estado
+(aprobar/rechazar/revisar solicitud, reversar un pago: un segundo intento da 409
+por estado); en la interfaz solo llevan el guard anti doble envío.
+
+### Cómo se usa
+
+```
+POST /api/v1/payments
+Idempotency-Key: 6f1c0c1e-3f8e-4c53-9d0a-7a1d2b9e5c10   # 16–128 caracteres: A-Z a-z 0-9 _ -
+```
+
+- **Sin el header** la ruta se comporta como siempre (compatibilidad con clientes existentes).
+- La clave se acota por **usuario + operación**. Se guarda con un hash SHA-256 de
+  método + URL + cuerpo (el cuerpo no se almacena) y, al terminar bien (2xx), la
+  respuesta original.
+- Misma clave y misma petición tras un éxito → se devuelve la respuesta guardada
+  (cabecera `Idempotent-Replayed: true`) sin repetir el efecto.
+- Misma clave con otro contenido → `409` con `code: "IDEMPOTENCY_KEY_REUSED"`.
+- Peticiones simultáneas con la misma clave: la llave única
+  `(user_id, operation, idempotency_key)` deja pasar solo una; las otras esperan
+  hasta `IDEMPOTENCY_WAIT_MS` y reciben la respuesta guardada, o `409`
+  `IDEMPOTENCY_IN_PROGRESS` (con `Retry-After`) si sigue en curso.
+- Un 4xx (validación, permisos, regla de negocio) ocurre antes del efecto: la clave
+  se libera y se puede reintentar con el mismo contenido.
+- Si el proceso muere a mitad de una operación, la clave queda `IN_PROGRESS` y no
+  se re-ejecuta hasta vencer (decisión deliberada: no se sabe si el efecto ocurrió).
+  Un administrador puede borrar la fila de `idempotency_keys` tras verificar el efecto.
+- No hay llamadas a proveedores externos de pago en este proyecto, por lo que no hay
+  clave que propagar. Si se agrega uno, pásele la misma `Idempotency-Key`.
+
+**Vigencia:** `IDEMPOTENCY_TTL_HOURS` (por defecto 24 h; el proyecto no tenía una
+convención previa, así que se eligió un valor que cubre reintentos y recargas del
+mismo día). Las claves vencidas se tratan como nuevas y se borran cada hora.
+`IDEMPOTENCY_WAIT_MS` (por defecto 8000). Tabla: `idempotency_keys` (migración 019,
+solo MySQL).
+
+### Interfaz (frontend)
+
+- `useIdempotentSubmit(scope)` (`frontend/src/hooks/useIdempotentSubmit.ts`): marca
+  `pending` al instante (botón deshabilitado + texto "Registrando…") **y** ignora
+  cualquier envío mientras haya uno en curso mediante un `ref` síncrono (cubre doble
+  clic, Enter repetido y varios controles, que el `disabled` por sí solo no frena).
+- Una clave por operación lógica (`frontend/src/lib/idempotency.ts`): se reutiliza
+  en cada reintento del mismo contenido —incluidos los reintentos automáticos de red
+  y el reintento tras renovar el token— y se descarta al tener éxito. Si el usuario
+  cambia el contenido, o hace una acción nueva, se genera otra. Se guarda en
+  `sessionStorage` para sobrevivir a una recarga.
+- `api.post(path, body, { idempotencyKey })` reintenta (máx. 3, con espera) solo las
+  peticiones que llevan clave: fallo de red, 502/503/504 y `IDEMPOTENCY_IN_PROGRESS`.
+
+### Pruebas
+
+```bash
+cd backend  && npm test                       # núcleo + store en memoria
+IDEMPOTENCY_TEST_DB=1 DB_HOST=127.0.0.1 DB_USER=… DB_PASSWORD=… DB_NAME=… npm test   # también contra MySQL real
+cd frontend && npm test
+```

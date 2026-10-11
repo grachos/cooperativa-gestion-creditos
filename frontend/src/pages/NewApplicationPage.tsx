@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
+import { useIdempotentSubmit } from "../hooks/useIdempotentSubmit";
 import { formatThousands } from "../lib/format";
 import { useDefaultMonthlyRate } from "../hooks/useParameterList";
 
@@ -27,7 +28,10 @@ export default function NewApplicationPage() {
     purpose: ""
   });
   const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const { submit, pending: pendingSubmit } = useIdempotentSubmit("application:new");
+  // Tras crear la solicitud se navega: el botón sigue deshabilitado hasta entonces.
+  const [navigating, setNavigating] = useState(false);
+  const submitting = pendingSubmit || navigating;
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -36,21 +40,23 @@ export default function NewApplicationPage() {
       setError("Indique un monto solicitado válido.");
       return;
     }
-    setSubmitting(true);
+    const payload = {
+      titularAssociateId: Number(form.titularAssociateId),
+      coDebtorAssociateIds: form.coDebtorAssociateIds.filter(Boolean).map(Number),
+      requestedAmount: Number(form.requestedAmount),
+      termValue: Number(form.termValue),
+      interestRate: defaultMonthlyRate,
+      purpose: form.purpose || undefined
+    };
     try {
-      const result = await api.post<{ id: number }>("/applications", {
-        titularAssociateId: Number(form.titularAssociateId),
-        coDebtorAssociateIds: form.coDebtorAssociateIds.filter(Boolean).map(Number),
-        requestedAmount: Number(form.requestedAmount),
-        termValue: Number(form.termValue),
-        interestRate: defaultMonthlyRate,
-        purpose: form.purpose || undefined
-      });
-      navigate(`/solicitudes/${result.id}`);
+      const out = await submit(payload, (idempotencyKey) =>
+        api.post<{ id: number }>("/applications", payload, { idempotencyKey })
+      );
+      if (!out.ran) return;
+      setNavigating(true);
+      navigate(`/solicitudes/${out.result.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al crear la solicitud");
-    } finally {
-      setSubmitting(false);
     }
   }
 

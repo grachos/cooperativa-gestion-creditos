@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
+import { useIdempotentSubmit } from "../hooks/useIdempotentSubmit";
 import { formatCurrency, formatDate, formatPercent } from "../lib/format";
 import { Loading, ErrorView } from "../components/StateViews";
 import { useAuth } from "../context/AuthContext";
@@ -277,31 +278,25 @@ function SummaryCard({ label, value }: { label: string; value: string }) {
   );
 }
 
-function PaymentForm({ creditId, onRegistered }: { creditId: number; onRegistered: () => void }) {
+export function PaymentForm({ creditId, onRegistered }: { creditId: number; onRegistered: () => void }) {
   const paymentMethods = useParameterList("metodos_pago", DEFAULT_PAYMENT_METHODS);
   const [amount, setAmount] = useState("");
   const [receivedDate, setReceivedDate] = useState(new Date().toISOString().slice(0, 10));
   const [paymentMethod, setPaymentMethod] = useState("TRANSFERENCIA");
   const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const { submit, pending: submitting } = useIdempotentSubmit(`payment:${creditId}`);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    setSubmitting(true);
+    const payload = { creditId, receivedDate, amount: Number(amount), paymentMethod };
     try {
-      await api.post("/payments", {
-        creditId,
-        receivedDate,
-        amount: Number(amount),
-        paymentMethod
-      });
+      const out = await submit(payload, (idempotencyKey) => api.post("/payments", payload, { idempotencyKey }));
+      if (!out.ran) return; // envío duplicado ignorado
       setAmount("");
       onRegistered();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al registrar el pago");
-    } finally {
-      setSubmitting(false);
     }
   }
 
@@ -352,7 +347,7 @@ function PromiseForm({ creditId, onCreated }: { creditId: number; onCreated: () 
   const [promiseDate, setPromiseDate] = useState("");
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const { submit, pending: submitting } = useIdempotentSubmit(`promise:${creditId}`);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -361,16 +356,17 @@ function PromiseForm({ creditId, onCreated }: { creditId: number; onCreated: () 
       setError("Debe indicar la fecha del compromiso");
       return;
     }
-    setSubmitting(true);
+    const payload = { promiseDate, description: description || undefined };
     try {
-      await api.post(`/credits/${creditId}/promises`, { promiseDate, description: description || undefined });
+      const out = await submit(payload, (idempotencyKey) =>
+        api.post(`/credits/${creditId}/promises`, payload, { idempotencyKey })
+      );
+      if (!out.ran) return;
       setPromiseDate("");
       setDescription("");
       onCreated();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al registrar el compromiso");
-    } finally {
-      setSubmitting(false);
     }
   }
 
@@ -394,7 +390,7 @@ function PromiseForm({ creditId, onCreated }: { creditId: number; onCreated: () 
         disabled={submitting}
         className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-60"
       >
-        Registrar compromiso
+        {submitting ? "Registrando..." : "Registrar compromiso"}
       </button>
     </form>
   );
@@ -423,21 +419,22 @@ function AdjustmentForm({ creditId, onCreated }: { creditId: number; onCreated: 
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const { submit, pending: submitting } = useIdempotentSubmit(`adjustment:${creditId}`);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    setSubmitting(true);
+    const payload = { type, amount: Number(amount), reason };
     try {
-      await api.post(`/credits/${creditId}/adjustments`, { type, amount: Number(amount), reason });
+      const out = await submit(payload, (idempotencyKey) =>
+        api.post(`/credits/${creditId}/adjustments`, payload, { idempotencyKey })
+      );
+      if (!out.ran) return;
       setAmount("");
       setReason("");
       onCreated();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al registrar el ajuste");
-    } finally {
-      setSubmitting(false);
     }
   }
 
@@ -475,7 +472,7 @@ function AdjustmentForm({ creditId, onCreated }: { creditId: number; onCreated: 
         disabled={submitting}
         className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-60"
       >
-        Registrar ajuste
+        {submitting ? "Registrando..." : "Registrar ajuste"}
       </button>
     </form>
   );
@@ -489,7 +486,10 @@ function RefinanceForm({ creditId }: { creditId: number }) {
   const [firstInstallmentDate, setFirstInstallmentDate] = useState("");
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const { submit, pending: pendingSubmit } = useIdempotentSubmit(`refinance:${creditId}`);
+  // Tras el éxito se navega a otra página: se mantiene deshabilitado hasta entonces.
+  const [redirecting, setRedirecting] = useState(false);
+  const submitting = pendingSubmit || redirecting;
 
   if (!open) {
     return (
@@ -506,19 +506,22 @@ function RefinanceForm({ creditId }: { creditId: number }) {
       setError("Debe indicar la fecha de la primera cuota y el motivo de la refinanciación");
       return;
     }
-    setSubmitting(true);
+    const payload = {
+      additionalCapital: Number(additionalCapital),
+      termValue: Number(termValue),
+      interestRate: Number(interestRate),
+      firstInstallmentDate,
+      reason
+    };
     try {
-      const result = await api.post<{ id: number }>(`/credits/${creditId}/refinance`, {
-        additionalCapital: Number(additionalCapital),
-        termValue: Number(termValue),
-        interestRate: Number(interestRate),
-        firstInstallmentDate,
-        reason
-      });
-      window.location.href = `/creditos/${result.id}`;
+      const out = await submit(payload, (idempotencyKey) =>
+        api.post<{ id: number }>(`/credits/${creditId}/refinance`, payload, { idempotencyKey })
+      );
+      if (!out.ran) return;
+      setRedirecting(true);
+      window.location.href = `/creditos/${out.result.id}`;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al refinanciar");
-      setSubmitting(false);
     }
   }
 
@@ -595,11 +598,21 @@ function RefinanceForm({ creditId }: { creditId: number }) {
 function ReverseButton({ paymentId, onDone }: { paymentId: number; onDone: () => void }) {
   const [showReason, setShowReason] = useState(false);
   const [reason, setReason] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const { submit, pending } = useIdempotentSubmit(`reverse:${paymentId}`);
 
   async function reverse() {
     if (!reason) return;
-    await api.post(`/payments/${paymentId}/reverse`, { reason });
-    onDone();
+    setError(null);
+    try {
+      // Sin Idempotency-Key en el servidor: el reverso ya es seguro por estado
+      // (un pago reversado no se puede reversar otra vez). Aquí solo se evita
+      // el doble envío y se muestra el error.
+      const out = await submit({ reason }, () => api.post(`/payments/${paymentId}/reverse`, { reason }));
+      if (out.ran) onDone();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo reversar el pago");
+    }
   }
 
   if (!showReason) {
@@ -618,9 +631,14 @@ function ReverseButton({ paymentId, onDone }: { paymentId: number; onDone: () =>
         value={reason}
         onChange={(e) => setReason(e.target.value)}
       />
-      <button onClick={() => void reverse()} className="text-xs text-red-600 hover:underline">
-        Confirmar
+      <button
+        onClick={() => void reverse()}
+        disabled={pending}
+        className="text-xs text-red-600 hover:underline disabled:opacity-60"
+      >
+        {pending ? "Reversando..." : "Confirmar"}
       </button>
+      {error && <span className="text-xs text-red-600">{error}</span>}
     </div>
   );
 }

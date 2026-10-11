@@ -22,23 +22,62 @@ async function refreshAccessToken(): Promise<string | null> {
   return data.accessToken;
 }
 
-export async function apiFetch<T>(
-  path: string,
-  options: RequestInit & { skipRetry?: boolean } = {}
-): Promise<T> {
-  const token = getAccessToken();
-  const res = await fetch(`${BASE_URL}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...options.headers
-    }
-  });
+/**
+ * Reintentos automáticos SOLO para peticiones con Idempotency-Key (son seguras
+ * de repetir: el servidor no duplica el efecto). Se reutiliza la misma clave y
+ * el mismo cuerpo. Se reintenta ante fallo de red, 502/503/504 y 409
+ * IDEMPOTENCY_IN_PROGRESS (la original sigue ejecutándose).
+ */
+export const RETRY_POLICY = { delaysMs: [400, 1200, 2500] as number[] };
+const RETRYABLE_STATUS = new Set([502, 503, 504]);
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  if (res.status === 401 && !options.skipRetry) {
+export interface ApiOptions extends RequestInit {
+  skipRetry?: boolean;
+  /** Clave de idempotencia de la operación (header `Idempotency-Key`). */
+  idempotencyKey?: string;
+}
+
+export async function apiFetch<T>(path: string, options: ApiOptions = {}): Promise<T> {
+  const { idempotencyKey, skipRetry, ...init } = options;
+  const token = getAccessToken();
+  const headers = {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
+    ...(init.headers as Record<string, string> | undefined)
+  };
+
+  let res: Response | undefined;
+  for (let attempt = 0; ; attempt++) {
+    const delay = RETRY_POLICY.delaysMs[attempt];
+    try {
+      res = await fetch(`${BASE_URL}${path}`, { ...init, headers });
+    } catch (err) {
+      if (!idempotencyKey || delay === undefined) throw err;
+      await wait(delay);
+      continue;
+    }
+    if (idempotencyKey && delay !== undefined) {
+      if (RETRYABLE_STATUS.has(res.status)) {
+        await wait(delay);
+        continue;
+      }
+      if (res.status === 409) {
+        const body = await res.clone().json().catch(() => null);
+        if (body?.code === "IDEMPOTENCY_IN_PROGRESS") {
+          await wait(delay);
+          continue;
+        }
+      }
+    }
+    break;
+  }
+
+  if (res.status === 401 && !skipRetry) {
     const newToken = await refreshAccessToken();
     if (newToken) {
+      // Mismo options => misma Idempotency-Key y mismo cuerpo en el reintento.
       return apiFetch<T>(path, { ...options, skipRetry: true });
     }
     localStorage.removeItem("accessToken");
@@ -88,10 +127,14 @@ export async function downloadFile(path: string, filename: string, retried = fal
   URL.revokeObjectURL(url);
 }
 
+export interface WriteOptions {
+  idempotencyKey?: string;
+}
+
 export const api = {
   get: <T>(path: string) => apiFetch<T>(path),
-  post: <T>(path: string, body?: unknown) =>
-    apiFetch<T>(path, { method: "POST", body: body ? JSON.stringify(body) : undefined }),
+  post: <T>(path: string, body?: unknown, opts?: WriteOptions) =>
+    apiFetch<T>(path, { method: "POST", body: body ? JSON.stringify(body) : undefined, idempotencyKey: opts?.idempotencyKey }),
   put: <T>(path: string, body?: unknown) =>
     apiFetch<T>(path, { method: "PUT", body: body ? JSON.stringify(body) : undefined }),
   patch: <T>(path: string, body?: unknown) =>

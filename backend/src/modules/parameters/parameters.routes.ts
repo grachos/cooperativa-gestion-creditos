@@ -4,6 +4,7 @@ import { pool } from "../../db/pool.js";
 import { requireAuth, requirePermission } from "../../middlewares/auth.middleware.js";
 import { asyncHandler, HttpError } from "../../middlewares/error.middleware.js";
 import { recordAudit } from "../audit/audit.service.js";
+import { idempotent } from "../../middlewares/idempotent.js";
 
 export const parametersRouter = Router();
 parametersRouter.use(requireAuth);
@@ -29,6 +30,7 @@ const createSchema = z.object({
 parametersRouter.post(
   "/",
   requirePermission("parameters:write"),
+  idempotent("parameters.create"),
   asyncHandler(async (req, res) => {
     const { key, value, description } = createSchema.parse(req.body);
 

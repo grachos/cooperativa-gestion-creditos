@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
+import { useIdempotentSubmit } from "../hooks/useIdempotentSubmit";
 import { formatCurrency, formatDate, formatPercent } from "../lib/format";
 import { Loading, ErrorView } from "../components/StateViews";
 import { useAuth } from "../context/AuthContext";
@@ -159,10 +160,17 @@ export default function ApplicationDetailPage() {
     onSuccess: invalidate
   });
 
+  // Decisiones (revisar / aprobar / rechazar): una sola a la vez. El servidor ya
+  // las protege por estado, así que aquí solo se evita el doble envío.
+  const { submit: submitDecision, pending: deciding } = useIdempotentSubmit(`application-decision:${id}`);
+  // Desembolso: crea un crédito, por eso lleva Idempotency-Key.
+  const { submit: submitDisbursement, pending: disbursing } = useIdempotentSubmit(`disbursement:${id}`);
+
   async function startReview() {
     setActionError(null);
     try {
-      await api.post(`/applications/${id}/review`, {});
+      const out = await submitDecision({ action: "review" }, () => api.post(`/applications/${id}/review`, {}));
+      if (!out.ran) return;
       invalidate();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Error al iniciar la revisión");
@@ -172,7 +180,8 @@ export default function ApplicationDetailPage() {
   async function approve() {
     setActionError(null);
     try {
-      await api.post(`/applications/${id}/approve`, {});
+      const out = await submitDecision({ action: "approve" }, () => api.post(`/applications/${id}/approve`, {}));
+      if (!out.ran) return;
       invalidate();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Error al aprobar");
@@ -186,7 +195,10 @@ export default function ApplicationDetailPage() {
       return;
     }
     try {
-      await api.post(`/applications/${id}/reject`, { rejectionReason });
+      const out = await submitDecision({ action: "reject", rejectionReason }, () =>
+        api.post(`/applications/${id}/reject`, { rejectionReason })
+      );
+      if (!out.ran) return;
       invalidate();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Error al rechazar");
@@ -199,14 +211,18 @@ export default function ApplicationDetailPage() {
       setActionError("Debe indicar la fecha de la primera cuota");
       return;
     }
+    const payload = {
+      disbursementDate,
+      firstInstallmentDate,
+      assignedCollectorId: assignedCollectorId ? Number(assignedCollectorId) : undefined,
+      assignedSellerId: assignedSellerId ? Number(assignedSellerId) : undefined
+    };
     try {
-      const result = await api.post<{ id: number }>(`/credits/applications/${id}/disburse`, {
-        disbursementDate,
-        firstInstallmentDate,
-        assignedCollectorId: assignedCollectorId ? Number(assignedCollectorId) : undefined,
-        assignedSellerId: assignedSellerId ? Number(assignedSellerId) : undefined
-      });
-      navigate(`/creditos/${result.id}`);
+      const out = await submitDisbursement(payload, (idempotencyKey) =>
+        api.post<{ id: number }>(`/credits/applications/${id}/disburse`, payload, { idempotencyKey })
+      );
+      if (!out.ran) return;
+      navigate(`/creditos/${out.result.id}`);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Error al desembolsar");
     }
@@ -279,9 +295,10 @@ export default function ApplicationDetailPage() {
           {data.status === "RADICADA" && (
             <button
               onClick={() => void startReview()}
-              className="rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100"
+              disabled={deciding}
+              className="rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-60"
             >
-              Poner en revisión
+              {deciding ? "Procesando..." : "Poner en revisión"}
             </button>
           )}
           <p className="text-xs text-slate-400">
@@ -289,9 +306,10 @@ export default function ApplicationDetailPage() {
           </p>
           <button
             onClick={() => void approve()}
-            className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+            disabled={deciding}
+            className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
           >
-            Aprobar solicitud
+            {deciding ? "Procesando..." : "Aprobar solicitud"}
           </button>
           <div className="flex gap-2">
             <input
@@ -302,9 +320,10 @@ export default function ApplicationDetailPage() {
             />
             <button
               onClick={() => void reject()}
-              className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+              disabled={deciding}
+              className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60"
             >
-              Rechazar
+              {deciding ? "Procesando..." : "Rechazar"}
             </button>
           </div>
         </div>
@@ -365,9 +384,10 @@ export default function ApplicationDetailPage() {
           </div>
           <button
             onClick={() => void disburse()}
-            className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+            disabled={disbursing}
+            className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
           >
-            Confirmar desembolso
+            {disbursing ? "Desembolsando..." : "Confirmar desembolso"}
           </button>
         </div>
       )}

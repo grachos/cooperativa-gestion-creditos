@@ -6,6 +6,7 @@ import { asyncHandler, HttpError } from "../../middlewares/error.middleware.js";
 import { requireAuth, requirePermission } from "../../middlewares/auth.middleware.js";
 import { recordAudit } from "../audit/audit.service.js";
 import { broadcastEvent } from "../alerts/sse.hub.js";
+import { idempotent } from "../../middlewares/idempotent.js";
 
 export const applicationsRouter = Router();
 applicationsRouter.use(requireAuth);
@@ -193,6 +194,7 @@ applicationsRouter.put(
 applicationsRouter.post(
   "/",
   requirePermission("applications:write"),
+  idempotent("applications.create"),
   asyncHandler(async (req, res) => {
     const data = creditApplicationSchema.parse(req.body);
     if (!data.titularAssociateId && !data.titularSocietyId) {

@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Plus, Search } from "lucide-react";
 import { api } from "../lib/api";
+import { useIdempotentSubmit } from "../hooks/useIdempotentSubmit";
 import { Loading, ErrorView, EmptyView } from "../components/StateViews";
 import { useAuth } from "../context/AuthContext";
 import { useParameterList } from "../hooks/useParameterList";
@@ -167,7 +168,7 @@ function NewAssociateForm({ onCreated }: { onCreated: () => void }) {
     dataConsent: false
   });
   const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const { submit, pending: submitting } = useIdempotentSubmit("associate:new");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string | null>>({});
 
   function checkPhone(name: "phone" | "employerPhone", value: string) {
@@ -187,26 +188,25 @@ function NewAssociateForm({ onCreated }: { onCreated: () => void }) {
       setError("Corrija los campos marcados antes de guardar.");
       return;
     }
-    setSubmitting(true);
+    const { address, municipality, department, incomeInfo, employerName, employerAddress, employerPhone, employerEmail, ...rest } =
+      form;
+    const payload = {
+      ...rest,
+      address: address || undefined,
+      municipality: municipality || undefined,
+      department: department || undefined,
+      incomeInfo: incomeInfo || undefined,
+      employerName: employerName || undefined,
+      employerAddress: employerAddress || undefined,
+      employerPhone: employerPhone || undefined,
+      employerEmail: employerEmail || undefined
+    };
     try {
-      const { address, municipality, department, incomeInfo, employerName, employerAddress, employerPhone, employerEmail, ...rest } =
-        form;
-      await api.post("/associates", {
-        ...rest,
-        address: address || undefined,
-        municipality: municipality || undefined,
-        department: department || undefined,
-        incomeInfo: incomeInfo || undefined,
-        employerName: employerName || undefined,
-        employerAddress: employerAddress || undefined,
-        employerPhone: employerPhone || undefined,
-        employerEmail: employerEmail || undefined
-      });
+      const out = await submit(payload, (idempotencyKey) => api.post("/associates", payload, { idempotencyKey }));
+      if (!out.ran) return;
       onCreated();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al crear asociado");
-    } finally {
-      setSubmitting(false);
     }
   }
 

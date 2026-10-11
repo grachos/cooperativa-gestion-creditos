@@ -4,6 +4,7 @@ import { api } from "../lib/api";
 import { Loading, ErrorView } from "../components/StateViews";
 import { useAuth } from "../context/AuthContext";
 import { useParameterList } from "../hooks/useParameterList";
+import { useIdempotentSubmit } from "../hooks/useIdempotentSubmit";
 import { PasswordInput } from "../components/PasswordInput";
 import { TabBar, CrossfadePanels } from "../components/Tabs";
 
@@ -285,16 +286,20 @@ export default function UsersPage() {
   });
   const [formError, setFormError] = useState<string | null>(null);
 
+  const { submit: submitCreate, pending: creating } = useIdempotentSubmit("user:new");
   const createUser = useMutation({
-    mutationFn: () =>
-      api.post("/users", {
+    mutationFn: () => {
+      const payload = {
         ...form,
         idType: form.idType || undefined,
         idNumber: form.idNumber || undefined,
         phone: form.phone || undefined,
         address: form.address || undefined
-      }),
-    onSuccess: () => {
+      };
+      return submitCreate(payload, (idempotencyKey) => api.post("/users", payload, { idempotencyKey }));
+    },
+    onSuccess: (out) => {
+      if (!out.ran) return; // envío duplicado ignorado
       setForm({
         fullName: "",
         email: "",
@@ -489,10 +494,10 @@ export default function UsersPage() {
 
           <button
             type="submit"
-            disabled={createUser.isPending}
+            disabled={createUser.isPending || creating}
             className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
           >
-            {createUser.isPending ? "Guardando..." : "Crear usuario"}
+            {createUser.isPending || creating ? "Guardando..." : "Crear usuario"}
           </button>
         </form>
       )}

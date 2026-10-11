@@ -4,6 +4,7 @@ import { promiseSchema, idParam } from "../../shared/schemas.js";
 import { asyncHandler, HttpError } from "../../middlewares/error.middleware.js";
 import { requireAuth, requirePermission } from "../../middlewares/auth.middleware.js";
 import { recordAudit } from "../audit/audit.service.js";
+import { idempotent } from "../../middlewares/idempotent.js";
 
 /**
  * Compromisos de pago (FECHAS DE COMPROMISOS en el Excel original): la
@@ -17,6 +18,7 @@ collectionsRouter.use(requireAuth);
 collectionsRouter.post(
   "/:id/promises",
   requirePermission("collections:write"),
+  idempotent("credits.promise"),
   asyncHandler(async (req, res) => {
     const { id } = idParam.parse(req.params);
     const { promiseDate, description } = promiseSchema.parse(req.body);

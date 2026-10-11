@@ -5,6 +5,7 @@ import { requireAuth, requirePermission } from "../../middlewares/auth.middlewar
 import { asyncHandler, HttpError } from "../../middlewares/error.middleware.js";
 import { createUserSchema, updateUserSchema, idParam } from "../../shared/schemas.js";
 import { recordAudit } from "../audit/audit.service.js";
+import { idempotent } from "../../middlewares/idempotent.js";
 
 export const usersRouter = Router();
 usersRouter.use(requireAuth);
@@ -26,6 +27,7 @@ usersRouter.get(
 usersRouter.post(
   "/",
   requirePermission("users:write"),
+  idempotent("users.create"),
   asyncHandler(async (req, res) => {
     const data = createUserSchema.parse(req.body);
 

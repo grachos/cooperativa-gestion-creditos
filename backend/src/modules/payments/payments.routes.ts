@@ -7,6 +7,7 @@ import { allocatePayment } from "./allocation.service.js";
 import { recordAudit } from "../audit/audit.service.js";
 import { enqueueIntegrationEvent } from "../integration/integration.service.js";
 import { broadcastEvent } from "../alerts/sse.hub.js";
+import { idempotent } from "../../middlewares/idempotent.js";
 
 export const paymentsRouter = Router();
 paymentsRouter.use(requireAuth);
@@ -14,6 +15,7 @@ paymentsRouter.use(requireAuth);
 paymentsRouter.post(
   "/",
   requirePermission("payments:write"),
+  idempotent("payments.create", { transactional: true }),
   asyncHandler(async (req, res) => {
     const data = paymentSchema.parse(req.body);
 

@@ -4,6 +4,7 @@ import { societySchema, idParam, paginationQuery } from "../../shared/schemas.js
 import { asyncHandler, HttpError } from "../../middlewares/error.middleware.js";
 import { requireAuth, requirePermission } from "../../middlewares/auth.middleware.js";
 import { recordAudit } from "../audit/audit.service.js";
+import { idempotent } from "../../middlewares/idempotent.js";
 
 export const societiesRouter = Router();
 societiesRouter.use(requireAuth);
@@ -40,6 +41,7 @@ societiesRouter.get(
 societiesRouter.post(
   "/",
   requirePermission("associates:write"),
+  idempotent("societies.create"),
   asyncHandler(async (req, res) => {
     const data = societySchema.parse(req.body);
     const [existing] = await pool.query<any[]>(

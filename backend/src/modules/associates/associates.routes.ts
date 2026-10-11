@@ -5,6 +5,7 @@ import { asyncHandler, HttpError } from "../../middlewares/error.middleware.js";
 import { requireAuth, requirePermission } from "../../middlewares/auth.middleware.js";
 import { recordAudit } from "../audit/audit.service.js";
 import { isAdult } from "../../utils/age.js";
+import { idempotent } from "../../middlewares/idempotent.js";
 
 export const associatesRouter = Router();
 associatesRouter.use(requireAuth);
@@ -72,6 +73,7 @@ associatesRouter.get(
 associatesRouter.post(
   "/",
   requirePermission("associates:write"),
+  idempotent("associates.create"),
   asyncHandler(async (req, res) => {
     const data = associateSchema.parse(req.body);
 

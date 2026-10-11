@@ -1,6 +1,7 @@
 import { Fragment, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
+import { useIdempotentSubmit } from "../hooks/useIdempotentSubmit";
 import { Loading, ErrorView } from "../components/StateViews";
 import { useAuth } from "../context/AuthContext";
 import { TabBar, CrossfadePanels } from "../components/Tabs";
@@ -656,9 +657,12 @@ function NewParameterForm() {
   const [state, setState] = useState<ValueState>(() => emptyValueState("object"));
   const [error, setError] = useState<string | null>(null);
 
+  const { submit: submitCreate, pending: creating } = useIdempotentSubmit("parameter:new");
   const create = useMutation({
-    mutationFn: (body: { key: string; value: unknown; description?: string }) => api.post("/parameters", body),
-    onSuccess: () => {
+    mutationFn: (body: { key: string; value: unknown; description?: string }) =>
+      submitCreate(body, (idempotencyKey) => api.post("/parameters", body, { idempotencyKey })),
+    onSuccess: (out) => {
+      if (!out.ran) return; // envío duplicado ignorado
       setKey("");
       setDescription("");
       setShape("object");
@@ -724,10 +728,10 @@ function NewParameterForm() {
       </div>
       <button
         type="submit"
-        disabled={create.isPending}
+        disabled={create.isPending || creating}
         className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
       >
-        {create.isPending ? "Creando..." : "Crear parámetro"}
+        {create.isPending || creating ? "Creando..." : "Crear parámetro"}
       </button>
     </form>
   );

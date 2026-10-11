@@ -9,6 +9,7 @@ import { enqueueIntegrationEvent } from "../integration/integration.service.js";
 import { broadcastEvent } from "../alerts/sse.hub.js";
 import { getMoraBucket, loadDelinquencyPolicy, loadMoraBuckets } from "../delinquency/delinquency.service.js";
 import { round2 } from "../../utils/money.js";
+import { idempotent } from "../../middlewares/idempotent.js";
 
 export const creditsRouter = Router();
 creditsRouter.use(requireAuth);
@@ -26,6 +27,7 @@ async function nextCreditNumber(): Promise<string> {
 creditsRouter.post(
   "/applications/:id/disburse",
   requirePermission("disbursements:write"),
+  idempotent("credits.disburse", { transactional: true }),
   asyncHandler(async (req, res) => {
     const { id } = idParam.parse(req.params);
     const { disbursementDate, firstInstallmentDate, assignedCollectorId, assignedSellerId, funderName, funderRatePercent } =
@@ -241,6 +243,7 @@ creditsRouter.get(
 creditsRouter.post(
   "/:id/refinance",
   requirePermission("disbursements:write"),
+  idempotent("credits.refinance", { transactional: true }),
   asyncHandler(async (req, res) => {
       const { id } = idParam.parse(req.params);
       const { additionalCapital, termValue, interestRate, firstInstallmentDate, reason } = refinanceSchema.parse(

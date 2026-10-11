@@ -3,9 +3,11 @@ import { ZodError } from "zod";
 
 export class HttpError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  code?: string;
+  constructor(status: number, message: string, code?: string) {
     super(message);
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -26,7 +28,7 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
     return res.status(413).json({ error: "La solicitud es demasiado grande" });
   }
   if (err instanceof HttpError) {
-    return res.status(err.status).json({ error: err.message });
+    return res.status(err.status).json(err.code ? { error: err.message, code: err.code } : { error: err.message });
   }
   console.error(err);
   return res.status(500).json({ error: "Error interno del servidor" });

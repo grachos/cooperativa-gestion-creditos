@@ -56,6 +56,14 @@ const envSchema = z
       .transform((v) => v === "true"),
     ADMIN_EMAIL: z.string().optional(),
     ADMIN_PASSWORD_HASH: z.string().optional(),
+    // Idempotency-Key (ver middlewares/idempotency.ts). El proyecto no tenía
+    // una convención para esto: el valor por defecto (24 h) cubre sobradamente
+    // reintentos de red, recargas y un "volver a enviar" el mismo día. Para
+    // cambiarlo, defina IDEMPOTENCY_TTL_HOURS (admite decimales). IDEMPOTENCY_WAIT_MS
+    // es cuánto espera una petición duplicada a que termine la original antes
+    // de recibir 409 IDEMPOTENCY_IN_PROGRESS.
+    IDEMPOTENCY_TTL_HOURS: z.coerce.number().positive().max(24 * 30).default(24),
+    IDEMPOTENCY_WAIT_MS: z.coerce.number().int().min(0).max(60000).default(8000),
     CRON_SECRET: z.string().min(16).optional()
   })
   ;
