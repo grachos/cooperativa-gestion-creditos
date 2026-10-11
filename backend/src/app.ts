@@ -67,8 +67,24 @@ const staticDir = path.resolve(
   env.STATIC_DIR ?? path.join(path.dirname(fileURLToPath(import.meta.url)), "../../frontend/dist")
 );
 if (fs.existsSync(path.join(staticDir, "index.html"))) {
+  // Los archivos de /assets llevan hash en el nombre: nunca cambian, se pueden
+  // cachear un año. El resto (logo, etc.) se revalida.
+  app.use(
+    "/assets",
+    express.static(path.join(staticDir, "assets"), { immutable: true, maxAge: "1y" })
+  );
   app.use(express.static(staticDir, { index: false, maxAge: "1h" }));
-  app.get(/^\/(?!api\/).*/, (_req, res) => res.sendFile(path.join(staticDir, "index.html")));
+
+  // index.html NUNCA se cachea: referencia los archivos con hash del despliegue
+  // actual. Si un navegador conserva uno viejo, pide JS que ya no existe y la
+  // pantalla queda en blanco hasta recargar.
+  const sendIndex = (_req: express.Request, res: express.Response) => {
+    res.setHeader("Cache-Control", "no-store");
+    res.sendFile(path.join(staticDir, "index.html"));
+  };
+  // Solo las rutas de la SPA (sin extensión) reciben index.html; un archivo
+  // inexistente (/algo.js) debe ser un 404 real, no HTML con estado 200.
+  app.get(/^\/(?!api\/)[^.]*$/, sendIndex);
 }
 
 app.use(notFoundHandler);
