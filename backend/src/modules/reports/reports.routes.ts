@@ -5,6 +5,7 @@ import { asyncHandler, HttpError } from "../../middlewares/error.middleware.js";
 import { getMoraBucket, loadMoraBuckets } from "../delinquency/delinquency.service.js";
 import { reportCache } from "./reportCache.js";
 import { csvRaw, csvText } from "../../utils/csv.js";
+import { paginationQuery } from "../../shared/schemas.js";
 
 export const reportsRouter = Router();
 reportsRouter.use(requireAuth, requirePermission("reports:read"));
@@ -68,17 +69,22 @@ reportsRouter.get(
 reportsRouter.get(
   "/overdue",
   reportCache.middleware(),
-  asyncHandler(async (_req, res) => {
+  asyncHandler(async (req, res) => {
+    // Paginación opcional: sin ?page= se devuelve todo (compatibilidad); con ?page= devuelve una página.
+    const paged = req.query.page !== undefined;
+    const { page, pageSize } = paginationQuery.parse(req.query);
     const [rows] = await pool.query<any[]>(
       `SELECT csi.*, c.credit_number, a.first_name, a.last_name
        FROM credit_schedule_installments csi
        JOIN credits c ON c.id = csi.credit_id
        LEFT JOIN associates a ON a.id = c.titular_associate_id
-       WHERE csi.status IN ('VENCIDA','EN_MORA') ORDER BY csi.overdue_days DESC`
+       WHERE csi.status IN ('VENCIDA','EN_MORA') ORDER BY csi.overdue_days DESC, csi.id`
     );
     const buckets = await loadMoraBuckets(pool);
-    const data = (rows as any[]).map((row) => ({ ...row, moraCode: getMoraBucket(row.overdue_days, buckets).code }));
-    res.json({ data });
+    const all = (rows as any[]).map((row) => ({ ...row, moraCode: getMoraBucket(row.overdue_days, buckets).code }));
+    if (!paged) return res.json({ data: all });
+    const start = (page - 1) * pageSize;
+    res.json({ data: all.slice(start, start + pageSize), page, pageSize, total: all.length });
   })
 );
 

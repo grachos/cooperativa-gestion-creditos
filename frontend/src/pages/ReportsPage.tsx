@@ -190,10 +190,18 @@ export default function ReportsPage() {
     queryKey: ["report-due", date],
     queryFn: () => api.get<{ data: DueRow[] }>(`/reports/due-on-date?date=${date}`)
   });
+  const [overduePage, setOverduePage] = useState(1);
+  const OVERDUE_PAGE_SIZE = 25;
   const overdueQuery = useQuery({
-    queryKey: ["report-overdue"],
-    queryFn: () => api.get<{ data: OverdueRow[] }>("/reports/overdue")
+    queryKey: ["report-overdue", overduePage],
+    queryFn: () =>
+      api.get<{ data: OverdueRow[]; total: number }>(
+        `/reports/overdue?page=${overduePage}&pageSize=${OVERDUE_PAGE_SIZE}`
+      ),
+    placeholderData: (prev) => prev
   });
+  const overdueTotal = overdueQuery.data?.total ?? 0;
+  const overduePages = Math.max(1, Math.ceil(overdueTotal / OVERDUE_PAGE_SIZE));
   const moraBucketsQuery = useQuery({
     queryKey: ["report-mora-buckets"],
     queryFn: () => api.get<{ data: MoraBucket[] }>("/reports/mora-buckets")
@@ -362,11 +370,13 @@ export default function ReportsPage() {
     );
   }
 
-  function downloadOverdueCsv() {
+  async function downloadOverdueCsv() {
+    // El CSV incluye todas las filas (la tabla solo muestra una página).
+    const all = await api.get<{ data: OverdueRow[] }>("/reports/overdue");
     downloadCsv(
       "cuotas-vencidas.csv",
       ["Credito", "Titular", "Dias de atraso", "Mora", "Saldo"],
-      (overdueQuery.data?.data ?? []).map((r) => [
+      all.data.map((r) => [
         r.credit_number,
         r.first_name ? `${r.first_name} ${r.last_name}` : "—",
         r.overdue_days,
@@ -411,6 +421,8 @@ export default function ReportsPage() {
     { key: "export", label: "Exportar pagos" }
   ] as const;
   const [tab, setTab] = useState<(typeof TABS)[number]["key"]>("monthly");
+  const [exportFrom, setExportFrom] = useState("");
+  const [exportTo, setExportTo] = useState("");
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
 
@@ -807,12 +819,48 @@ export default function ReportsPage() {
             </tbody>
           </table>
         )}
+        {overdueTotal > OVERDUE_PAGE_SIZE && (
+          <div className="mt-3 flex items-center justify-between text-sm text-slate-600">
+            <span>
+              Página {overduePage} de {overduePages} · {overdueTotal} cuotas
+            </span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={overduePage <= 1}
+                onClick={() => setOverduePage((p) => p - 1)}
+                className="rounded-md border border-slate-300 px-3 py-1 hover:bg-slate-100 disabled:opacity-50"
+              >
+                Anterior
+              </button>
+              <button
+                type="button"
+                disabled={overduePage >= overduePages}
+                onClick={() => setOverduePage((p) => p + 1)}
+                className="rounded-md border border-slate-300 px-3 py-1 hover:bg-slate-100 disabled:opacity-50"
+              >
+                Siguiente
+              </button>
+            </div>
+          </div>
+        )}
       </div>
       )}
 
       {k === "export" && (
       <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
-        <h2 className="mb-3 text-sm font-semibold text-slate-700">Exportar todos los pagos</h2>
+        <h2 className="mb-3 text-sm font-semibold text-slate-700">Exportar pagos</h2>
+        <div className="mb-3 flex flex-wrap items-end gap-3 text-sm">
+          <label className="flex flex-col text-xs text-slate-500">
+            Desde
+            <input type="date" value={exportFrom} max={exportTo || undefined} onChange={(e) => setExportFrom(e.target.value)} className="rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-700" />
+          </label>
+          <label className="flex flex-col text-xs text-slate-500">
+            Hasta
+            <input type="date" value={exportTo} min={exportFrom || undefined} onChange={(e) => setExportTo(e.target.value)} className="rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-700" />
+          </label>
+          <span className="text-xs text-slate-400">Vacío = todos los pagos</span>
+        </div>
         <button
           type="button"
           disabled={exporting}
@@ -820,7 +868,11 @@ export default function ReportsPage() {
             setExportError(null);
             setExporting(true);
             try {
-              await downloadFile("/reports/payments.csv", "pagos.csv");
+              const qs = new URLSearchParams();
+              if (exportFrom) qs.set("from", exportFrom);
+              if (exportTo) qs.set("to", exportTo);
+              const suffix = qs.toString() ? `?${qs}` : "";
+              await downloadFile(`/reports/payments.csv${suffix}`, `pagos${exportFrom ? `_${exportFrom}` : ""}${exportTo ? `_${exportTo}` : ""}.csv`);
             } catch (err) {
               setExportError(err instanceof Error ? err.message : "No se pudo exportar");
             } finally {

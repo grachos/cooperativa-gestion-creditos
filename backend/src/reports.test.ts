@@ -104,6 +104,16 @@ describe.skipIf(process.env.REPORTS_TEST_DB !== "1" && process.env.TEST_DB !== "
     expect(lines.some((l) => l.includes('"Pago, con coma"'))).toBe(true);
   });
 
+  it("/reports/overdue: sin page devuelve todo; con page devuelve una página con total", async () => {
+    const all = await call("GET", "/reports/overdue");
+    expect(all.status).toBe(200);
+    const paged = await call("GET", "/reports/overdue?page=1&pageSize=1");
+    expect(paged.status).toBe(200);
+    expect(paged.body.total).toBe(all.body.data.length);
+    expect(paged.body.data.length).toBe(Math.min(1, all.body.data.length));
+    expect((await call("GET", "/reports/overdue?page=0")).status).toBe(400);
+  });
+
   it("pagos.csv con filtro de fechas y validación", async () => {
     const out = await call("GET", "/reports/payments.csv?from=2000-01-01&to=2000-01-02");
     expect(out.status).toBe(200);

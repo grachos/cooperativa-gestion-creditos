@@ -31,7 +31,7 @@ para cientos o miles de usuarios concurrentes. Riesgos principales detectados:
 | 9 | P0 | R | SSE ocupa una conexión por pestaña, sin heartbeat | ✅ latido, topes por usuario y globales, limpieza de conexiones muertas (§3.7) |
 | 10 | P1 | C | Job de alertas: N+1 y sin exclusión mutua (duplicados) | ✅ §3.5 y §3.6 |
 | 11 | P1 | C | `audit_logs` sin índices; listados ordenados sin índice; búsqueda `LIKE '%x%'` | ✅ índices medidos con EXPLAIN (§3.10); la búsqueda `%x%` sigue igual (compromiso en §3.10) |
-| 12 | P1 | C | Reportes y exportaciones sin límite (cargan todo el histórico) | 🔶 `pagos.csv` por tramos con filtros (§3.12) y reportes pesados con caché + coalescencia (§3.11); faltan `export/accounting` y `/reports/overdue` (devuelve toda la cartera vencida; requiere paginar en la interfaz) |
+| 12 | P1 | C | Reportes y exportaciones sin límite (cargan todo el histórico) | 🔶 `pagos.csv` por tramos con filtros (§3.12) y reportes pesados con caché + coalescencia (§3.11); `/reports/overdue` paginado (`?page=&pageSize=`, la interfaz muestra 25 por página y el CSV sigue trayendo todo); falta `export/accounting` |
 | 13 | P1 | C | Correo de restablecimiento dentro de la petición, sin timeout SMTP | ⏳ |
 | 14 | P1 | C | Sin logs de peticiones, métricas ni alertas; `/health` no toca la base | 🔶 log estructurado con id de petición, consultas lentas, `/admin/metrics`, errores no capturados (§3.13); falta un monitor externo con alertas (acción de operación, §10) |
 | 15 | P1 | R | Respuestas de la API sin `Cache-Control` (riesgo con CDN/LiteSpeed cache) | ✅ `Cache-Control: no-store` en toda `/api` (§3.8) |
@@ -435,6 +435,7 @@ Lo que ya está en el código (§3.13) permite diagnosticar; falta lo que avisa 
 
 | Fecha | Cambio |
 |---|---|
+| 2026-10-13 | Página Reportes: tabla de cuotas vencidas paginada (25 por página, `/reports/overdue?page=&pageSize=` con `total`; sin `page` conserva la respuesta completa) y exportación de pagos con rango Desde/Hasta (usa `?from=&to=`). Limitación: el servidor aún calcula la lista completa y la corta en memoria (cacheada 60 s); no se midió con volumen nuevo. |
 | 2026-10-13 | Bloque 3: índices medidos con EXPLAIN sobre 1,5 M de filas (migración 022, auditoría 527 → 0,6 ms); caché de reportes con coalescencia (20 usuarios: 21,9 s → 5,5 s, sin bloquear al resto); `pagos.csv` por tramos con filtros y escapado de CSV (SEC-010); observabilidad (id de petición, log estructurado, consultas lentas, `/admin/metrics`, errores no capturados); herramienta `explain-bench.mjs`; `TEST_DB=1`. |
 | 2026-10-12 | Incidente: la migración 021 quedó a medias y el sitio cayó; migraciones repetibles + candado entre procesos (§3.9). |
 | 2026-10-12 | Bloque 2: job de alertas por lotes (18× más rápido, mismo resultado), exclusión mutua y ejecución diaria única (`job_runs`, `GET_LOCK`), alertas únicas (`open_flag`), SSE entre procesos con latido y topes, pool con cola limitada, `/health` real, `no-store` en la API, apagado ordenado. Migración 021. |
