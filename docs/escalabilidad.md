@@ -26,15 +26,15 @@ para cientos o miles de usuarios concurrentes. Riesgos principales detectados:
 | 4 | P1 | C | Número de crédito con `COUNT(*)+1` (se repite bajo concurrencia) | ✅ §3.2 |
 | 5 | P1 | C | Refinanciación doble del mismo crédito | ✅ §3.1 |
 | 6 | P0 | C | bcryptjs (JS puro) bloquea el hilo principal en login/refresh/correo | ✅ [§3.3](#33-cpu-de-hashes-bcrypt-nativo-y-sha-256-en-tokens) |
-| 7 | P0 | R | Varios procesos Node con estado en memoria (SSE, rate limit, job diario ×N) | 🔍 §5 |
-| 8 | P0 | R | Pool de 10 conexiones sin `queueLimit` ni timeouts | ⏳ |
-| 9 | P0 | R | SSE ocupa una conexión por pestaña, sin heartbeat | ⏳ |
-| 10 | P1 | C | Job de alertas: N+1 y sin exclusión mutua (duplicados) | ⏳ |
+| 7 | P0 | R | Varios procesos Node con estado en memoria (SSE, rate limit, job diario ×N) | 🔶 job diario y SSE ya funcionan con N procesos (§3.5, §3.7); rate limit sigue por proceso; falta confirmar cuántos procesos hay (§5) |
+| 8 | P0 | R | Pool de 10 conexiones sin `queueLimit` ni timeouts | 🔶 cola limitada + 503, timeout de conexión y de petición (§3.8); falta fijar `DB_POOL_SIZE` con `max_user_connections` (§5) |
+| 9 | P0 | R | SSE ocupa una conexión por pestaña, sin heartbeat | ✅ latido, topes por usuario y globales, limpieza de conexiones muertas (§3.7) |
+| 10 | P1 | C | Job de alertas: N+1 y sin exclusión mutua (duplicados) | ✅ §3.5 y §3.6 |
 | 11 | P1 | C | `audit_logs` sin índices; listados ordenados sin índice; búsqueda `LIKE '%x%'` | ⏳ (validar con EXPLAIN) |
 | 12 | P1 | C | Reportes y exportaciones sin límite (cargan todo el histórico) | ⏳ |
 | 13 | P1 | C | Correo de restablecimiento dentro de la petición, sin timeout SMTP | ⏳ |
-| 14 | P1 | C | Sin logs de peticiones, métricas ni alertas; `/health` no toca la base | ⏳ |
-| 15 | P1 | R | Respuestas de la API sin `Cache-Control` (riesgo con CDN/LiteSpeed cache) | ⏳ |
+| 14 | P1 | C | Sin logs de peticiones, métricas ni alertas; `/health` no toca la base | 🔶 `/health` ya verifica la base e identifica el proceso (§3.8); faltan logs de peticiones, métricas y alertas |
+| 15 | P1 | R | Respuestas de la API sin `Cache-Control` (riesgo con CDN/LiteSpeed cache) | ✅ `Cache-Control: no-store` en toda `/api` (§3.8) |
 | 16 | P2 | C | `COUNT(*)` en cada listado; `parameters` se lee en casi cada operación | ⏳ |
 
 El detalle de índices recomendados, de caché, de tareas asíncronas y el plan de
@@ -127,6 +127,77 @@ Un login aislado pasó de 248 ms a 134 ms. Script de medición: sección 4.
 - `POST /auth/refresh` con un token manipulado o mal formado devolvía **500**; ahora devuelve 401.
 - `AUTH_RATE_LIMIT` (por defecto 40 por 15 min por IP) es configurable para poder hacer pruebas de carga en un entorno de pruebas. **No subirlo en producción.**
 
+### 3.5 Job de alertas por lotes
+
+**Problema (confirmado):** `recalculateAlerts` hacía hasta 3 consultas **por cuota
+abierta** (UPDATE, SELECT de alertas existentes, INSERT) y usaba `NOT IN`, que no
+aprovecha el índice de `status`.
+
+**Solución:** carga las cuotas abiertas con `status IN (...)`, calcula en memoria y
+escribe por lotes: un `UPDATE … WHERE id IN (…)` por cada combinación distinta de
+(días de atraso, estado), una sola lectura de las alertas abiertas y `INSERT` en lotes
+de 500. La lógica de negocio no cambió.
+
+**Verificación de equivalencia** (mismos datos, código anterior contra código nuevo):
+
+| Conjunto de datos | Anterior | Nuevo | ¿Mismo resultado? |
+|---|---|---|---|
+| 19 créditos / 228 cuotas, 19 desfases de vencimiento distintos | 79 ms | 42 ms | Sí: idénticas las 228 cuotas, las 41 alertas y los 19 créditos |
+| 1.919 créditos / 23.028 cuotas | **8.321 ms, 17.478 consultas** | **459 ms, 60 consultas** | Sí: mismo hash de cuotas (días y estado), alertas (tipo, prioridad, mensaje) y créditos |
+
+Proyección lineal: con 180.000 cuotas el job anterior tardaría ~65 s con ~136.000
+consultas; el nuevo, unos pocos segundos.
+
+### 3.6 Una sola ejecución a la vez, y una vez por día
+
+- `utils/jobLock.ts`: `withJobLock` usa `GET_LOCK` de MySQL (candado por nombre, ligado a
+  la conexión, se libera solo si el proceso muere). El job y el botón "Recalcular" no
+  esperan: si ya hay una ejecución en curso, el job se omite y el botón responde **409**.
+- **Job diario:** cada proceso revisa cada 10 min, pero la reserva
+  `job_runs (job_name, run_date)` (`INSERT IGNORE`) hace que lo ejecute **un solo proceso
+  por día**. Si el job falla, se devuelve la reserva y el siguiente intento lo reintenta.
+- **Alertas únicas:** columna `alerts.open_flag` (1 mientras está ABIERTA, NULL al
+  atenderla) con llave única `(installment_id, type, open_flag)`. Dos ejecuciones
+  simultáneas ya no pueden crear dos alertas abiertas iguales; el historial de alertas
+  atendidas se conserva. Migración `021_multiprocess_guards.sql` (descarta duplicados
+  abiertos existentes conservando el más antiguo).
+
+### 3.7 Alertas en vivo (SSE) con varios procesos
+
+Cada proceso solo conoce sus propias conexiones SSE. Ahora `SseHub`
+(`modules/alerts/sse.hub.core.ts`) entrega el evento de inmediato a sus clientes y lo
+publica en la tabla `realtime_events`; cada proceso la consulta cada 2 s y reenvía a sus
+clientes lo publicado por los demás (ignora lo propio). **Solo consulta mientras tiene
+clientes conectados**; los eventos se purgan a los 10 minutos.
+
+- **Latido** cada 25 s (`: ping`): detecta y limpia conexiones muertas y evita que el
+  proxy las corte por inactividad.
+- **Tope por usuario** (5): al abrir otra pestaña se cierra la conexión más antigua.
+  **Tope global** (500 por proceso): más allá responde 503 y el navegador reintenta solo.
+- Garantías: cada evento llega una vez a cada cliente. **No hay orden total entre
+  procesos distintos** (el evento local se entrega al instante); sí se conserva el orden
+  entre eventos de un mismo proceso. Para notificaciones de alertas es suficiente.
+- El frontend solo escucha `alert.created`; los demás eventos que emite el servidor
+  (`payment.registered`, etc.) no tienen consumidor hoy.
+- Si algún día se pasa a VPS con Redis, este buzón se reemplaza por pub/sub sin cambiar el
+  resto del código (interfaz `RealtimeStore`).
+
+### 3.8 Pool, tiempos máximos, salud y caché
+
+| Cambio | Detalle |
+|---|---|
+| Pool de conexiones | `DB_POOL_SIZE` (10) y `DB_QUEUE_LIMIT` (200). Con la cola llena se responde **503 + Retry-After** en vez de acumular peticiones colgadas. `DB_CONNECT_TIMEOUT_MS` (10 s), keep-alive activado. |
+| Peticiones lentas | `REQUEST_TIMEOUT_MS` (60 s) y `headersTimeout` 30 s cortan clientes que nunca terminan de enviar. No afecta a SSE. |
+| `/health` | Ejecuta `SELECT 1` (máx. 2 s); **503 si la base falla** (antes devolvía "ok" fijo). Incluye `instance` (id del proceso) y `uptimeSec`. |
+| Caché | `Cache-Control: no-store` en toda `/api/*`: la API devuelve datos por usuario y personales y nunca debe quedar en una caché compartida (CDN, LiteSpeed Cache). |
+| Apagado ordenado | Con SIGTERM/SIGINT cierra las conexiones SSE y devuelve las conexiones MySQL (cada despliegue reinicia el proceso). |
+| Limpieza horaria | Borra claves de idempotencia y eventos en vivo vencidos. |
+
+**Límite honesto:** `mysql2` no tiene un tiempo máximo para *obtener* una conexión del
+pool ni para una consulta; `DB_QUEUE_LIMIT` y `REQUEST_TIMEOUT_MS` son la contención
+disponible. Un timeout por consulta requeriría `max_execution_time`, que difiere entre
+MySQL y MariaDB; queda como pendiente si las pruebas de carga lo justifican.
+
 ## 4. Cómo verificar
 
 Pruebas automáticas (carpeta `backend/src`). Las que necesitan base de datos son
@@ -140,7 +211,12 @@ DB="DB_HOST=127.0.0.1 DB_USER=… DB_PASSWORD=… DB_NAME=…"
 env $DB CONCURRENCY_TEST_DB=1 npm test    # carreras: pagos, reversos, desembolsos, refinanciación
 env $DB AUTH_TEST_DB=1 npm test           # tokens SHA-256 y compatibilidad con hashes bcrypt
 env $DB IDEMPOTENCY_TEST_DB=1 npm test    # idempotencia contra MySQL real
+env $DB JOBS_TEST_DB=1 npm test           # candados, job diario, alertas únicas, buzón de eventos
+# Todo junto (el archivo de autenticación hace muchos logins: subir el límite en la base de pruebas):
+env $DB AUTH_RATE_LIMIT=100000 CONCURRENCY_TEST_DB=1 AUTH_TEST_DB=1 IDEMPOTENCY_TEST_DB=1 JOBS_TEST_DB=1 npm test
 ```
+Las pruebas de `sse.hub.test.ts` (latido, topes, dos procesos simulados) y de
+`app.health.test.ts` (salud, `no-store`, cola del pool) no necesitan base de datos.
 
 Medición de bloqueo del servidor durante un pico de logins (usa el script de la
 carpeta `scripts/`; requiere un usuario de prueba y `AUTH_RATE_LIMIT` alto):
@@ -157,8 +233,9 @@ el binario nativo no se pudo cargar (la app funciona igual, pero más lento bajo
 ## 5. Información que falta (obtenerla antes de dimensionar)
 
 1. **Usuarios reales esperados:** ¿solo funcionarios o también un portal de asociados? ¿concurrencia y pico (cierre de mes, fechas de pago)?
-2. **Límites del plan de Hostinger:** hPanel → Avanzado → Uso de recursos (CPU, RAM, procesos). Preguntar a soporte cuántas instancias de Node arranca lsnode y si las conexiones largas (SSE) tienen tiempo límite. Pista: los logs muestran **dos** arranques por despliegue (`pid` ya se registra en el log de arranque).
-3. **Límites de MySQL:** `SHOW VARIABLES WHERE Variable_name IN ('max_user_connections','max_connections','wait_timeout','innodb_buffer_pool_size'); SELECT VERSION();`
+2. **Cuántos procesos Node hay (clave para #7):** abra `https://coomulnissi.cc/health` unas 10 veces: si el campo `instance` cambia entre respuestas, hay varios procesos; si siempre es el mismo, hay uno. Los logs de arranque también muestran `pid` e `instancia`. Si hay uno solo, la parte de varios procesos de §3.5–3.7 queda como protección preventiva sin costo.
+2b. **Límites del plan de Hostinger:** hPanel → Avanzado → Uso de recursos (CPU, RAM, procesos). Preguntar a soporte cuántas instancias de Node arranca lsnode y si las conexiones largas (SSE) tienen tiempo límite. Pista: los logs muestran **dos** arranques por despliegue, con `pid` e `instancia` distintos.
+3. **Límites de MySQL (para fijar `DB_POOL_SIZE`: procesos × tamaño del pool ≤ `max_user_connections`):** `SHOW VARIABLES WHERE Variable_name IN ('max_user_connections','max_connections','wait_timeout','innodb_buffer_pool_size'); SELECT VERSION();`
 4. **Volumen por tabla:** `SELECT table_name, table_rows, ROUND((data_length+index_length)/1048576,1) AS mb FROM information_schema.tables WHERE table_schema = DATABASE() ORDER BY mb DESC;`
 5. **Índices reales:** `SHOW INDEX FROM payments;` (y las demás tablas de la sección 6).
 6. **Planes de ejecución:** `EXPLAIN` de cada consulta de la sección 6 sobre datos sembrados en un entorno de pruebas.
@@ -198,7 +275,7 @@ Evitar también `SELECT *` en listados (arrastra columnas JSON de auditoría y s
 
 ## 9. Orden de trabajo restante
 
-1. Confirmar el modelo de procesos y los límites de conexión (§5); job de alertas con `GET_LOCK` y alertas únicas; `queueLimit`/timeouts del pool; `no-store` en la API.
+1. Confirmar cuántos procesos hay y los límites de conexión (§5) y fijar `DB_POOL_SIZE`; rate limit compartido entre procesos (hoy el límite de autenticación es por proceso: con N procesos el límite real es N × `AUTH_RATE_LIMIT`).
 2. Índices de §6 validados con EXPLAIN; quitar `SELECT *`.
 3. Observabilidad mínima (log de peticiones con id, `/health` que consulte la base, rastreo de errores) y retención de `audit_logs` y `login_activity`.
 4. Pruebas de carga en entorno de pruebas (§8).
@@ -208,4 +285,5 @@ Evitar también `SELECT *` en listados (arrastra columnas JSON de auditoría y s
 
 | Fecha | Cambio |
 |---|---|
+| 2026-10-12 | Bloque 2: job de alertas por lotes (18× más rápido, mismo resultado), exclusión mutua y ejecución diaria única (`job_runs`, `GET_LOCK`), alertas únicas (`open_flag`), SSE entre procesos con latido y topes, pool con cola limitada, `/health` real, `no-store` en la API, apagado ordenado. Migración 021. |
 | 2026-10-12 | Diagnóstico inicial. Corregidos #1–#6 (§3). Migración 020. `AUTH_RATE_LIMIT`. Refresh con token inválido: 500 → 401. |

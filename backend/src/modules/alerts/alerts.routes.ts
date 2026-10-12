@@ -5,16 +5,22 @@ import { env } from "../../config/env.js";
 import { idParam, paginationQuery } from "../../shared/schemas.js";
 import { asyncHandler, HttpError } from "../../middlewares/error.middleware.js";
 import { requireAuth, requirePermission } from "../../middlewares/auth.middleware.js";
-import { registerSseClient } from "./sse.hub.js";
+import { canAcceptSseClient, registerSseClient } from "./sse.hub.js";
 import { recalculateAlerts } from "./alerts.service.js";
 
 export const alertsRouter = Router();
 
 alertsRouter.get("/stream", requireAuth, (req, res) => {
+  // Tope de conexiones en vivo por proceso: más allá, el cliente reintenta solo.
+  if (!canAcceptSseClient()) {
+    res.setHeader("Retry-After", "5");
+    return res.status(503).json({ error: "Demasiadas conexiones en vivo; reintente en unos segundos" });
+  }
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
-    "Cache-Control": "no-cache",
-    Connection: "keep-alive"
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no" // evita que el proxy acumule los eventos
   });
   res.write("retry: 3000\n\n");
   registerSseClient(req.user!.id, res);
@@ -71,7 +77,7 @@ alertsRouter.post(
     const { id } = idParam.parse(req.params);
     const [rows] = await pool.query<any[]>(`SELECT id FROM alerts WHERE id = ?`, [id]);
     if ((rows as any[]).length === 0) throw new HttpError(404, "Alerta no encontrada");
-    await pool.query(`UPDATE alerts SET status = 'ATENDIDA', resolved_at = NOW() WHERE id = ?`, [id]);
+    await pool.query(`UPDATE alerts SET status = 'ATENDIDA', resolved_at = NOW(), open_flag = NULL WHERE id = ?`, [id]);
     res.json({ id, status: "ATENDIDA" });
   })
 );
@@ -81,6 +87,7 @@ alertsRouter.post(
   requirePermission("alerts:write"),
   asyncHandler(async (_req, res) => {
     const result = await recalculateAlerts();
+    if (result.skipped) throw new HttpError(409, "Ya hay un recálculo de alertas en curso; intente en un momento");
     res.json(result);
   })
 );

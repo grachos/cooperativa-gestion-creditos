@@ -68,6 +68,16 @@ const envSchema = z
     // forgot-password, reset-password). Súbalo SOLO en un entorno de pruebas de
     // carga; en producción deje el valor por defecto.
     AUTH_RATE_LIMIT: z.coerce.number().int().positive().default(40),
+    // Pool de conexiones MySQL POR PROCESO. El plan de hosting limita el total de
+    // conexiones simultáneas del usuario (max_user_connections): procesos × tamaño
+    // del pool no debe superarlo. DB_QUEUE_LIMIT es cuántas peticiones pueden
+    // esperar una conexión libre; pasado eso se responde 503 de inmediato en vez
+    // de acumular peticiones colgadas.
+    DB_POOL_SIZE: z.coerce.number().int().min(1).max(100).default(10),
+    DB_QUEUE_LIMIT: z.coerce.number().int().min(0).default(200),
+    DB_CONNECT_TIMEOUT_MS: z.coerce.number().int().min(1000).default(10000),
+    // Tiempo máximo para recibir una petición completa (corta clientes lentos).
+    REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1000).default(60000),
     CRON_SECRET: z.string().min(16).optional()
   })
   ;

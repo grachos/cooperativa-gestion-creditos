@@ -30,6 +30,11 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
   if (err instanceof HttpError) {
     return res.status(err.status).json(err.code ? { error: err.message, code: err.code } : { error: err.message });
   }
+  // Pool de conexiones saturado (cola llena): el servidor está al límite, no es un bug.
+  if (err instanceof Error && /queue limit reached/i.test(err.message)) {
+    res.setHeader("Retry-After", "2");
+    return res.status(503).json({ error: "El servidor está muy ocupado; intente de nuevo en unos segundos" });
+  }
   // Llave única violada (p. ej. dos peticiones simultáneas, o editar un asociado
   // con una identificación que ya existe): es un conflicto, no un error interno.
   const dup = err as { errno?: number; sqlMessage?: string };

@@ -3,7 +3,7 @@ import type { PoolConnection as MysqlConnection } from "mysql2/promise";
 import { env } from "../config/env.js";
 
 /**
- * Pool de MySQL/MariaDB (Hostinger). Expone la misma interfaz que usa todo el
+ * Pool de MySQL/MariaDB (Hostinger). Tamaño y cola: DB_POOL_SIZE / DB_QUEUE_LIMIT. Expone la misma interfaz que usa todo el
  * proyecto: `pool.query(sql, params)` devuelve `[rows, fields]` y
  * `getConnection()` entrega begin/commit/rollback/release.
  *
@@ -23,7 +23,12 @@ const mysqlPool = mysql.createPool({
   database: env.DB_NAME,
   ssl: env.DATABASE_SSL ? { rejectUnauthorized: false } : undefined,
   waitForConnections: true,
-  connectionLimit: 10,
+  connectionLimit: env.DB_POOL_SIZE,
+  // Sin esto la cola de espera era ilimitada: con la base lenta, las peticiones
+  // se acumulaban sin fin. Pasado el límite, mysql2 rechaza (se responde 503).
+  queueLimit: env.DB_QUEUE_LIMIT,
+  connectTimeout: env.DB_CONNECT_TIMEOUT_MS,
+  enableKeepAlive: true,
   charset: "utf8mb4",
   dateStrings: true,
   timezone: "Z",

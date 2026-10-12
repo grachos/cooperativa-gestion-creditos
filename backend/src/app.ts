@@ -6,6 +6,8 @@ import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { env } from "./config/env.js";
+import { pool } from "./db/pool.js";
+import { instanceId } from "./modules/alerts/sse.hub.js";
 import { errorHandler, notFoundHandler } from "./middlewares/error.middleware.js";
 import { authRouter } from "./modules/auth/auth.routes.js";
 import { associatesRouter } from "./modules/associates/associates.routes.js";
@@ -31,7 +33,27 @@ app.use(helmet());
 app.use(cors({ origin: env.CORS_ORIGIN, credentials: true }));
 app.use(express.json({ limit: "1mb" }));
 
-app.get("/health", (_req, res) => res.json({ status: "ok" }));
+// Salud: verifica la base de datos (antes devolvía "ok" fijo aunque la base estuviera caída).
+// `instance` identifica al proceso: si en logs o respuestas aparecen varios, hay varios procesos.
+app.get("/health", async (_req, res) => {
+  const startedAt = process.uptime();
+  try {
+    await Promise.race([
+      pool.query("SELECT 1"),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 2000).unref())
+    ]);
+    res.json({ status: "ok", db: "ok", instance: instanceId, uptimeSec: Math.round(startedAt) });
+  } catch {
+    res.status(503).json({ status: "degraded", db: "error", instance: instanceId, uptimeSec: Math.round(startedAt) });
+  }
+});
+
+// La API devuelve datos por usuario y datos personales: nunca debe guardarse en una
+// caché compartida (navegador, CDN o LiteSpeed Cache de Hostinger).
+app.use("/api", (_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
 
 // Límite por IP en autenticación (complementa el bloqueo por cuenta del
 // login): frena la prueba de contraseñas en muchas cuentas y el abuso del

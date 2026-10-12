@@ -1,6 +1,7 @@
 import { pool } from "../../db/pool.js";
 import { calculateOverdueDays, getMoraBucket, loadDelinquencyPolicy, loadMoraBuckets } from "../delinquency/delinquency.service.js";
-import { broadcastEvent } from "./sse.hub.js";
+import { broadcastEvents } from "./sse.hub.js";
+import { claimDailyRun, releaseDailyRun, withJobLock } from "../../utils/jobLock.js";
 
 const BUCKET_PRIORITY: Record<string, "BAJA" | "MEDIA" | "ALTA"> = {
   CM030: "BAJA",
@@ -17,18 +18,48 @@ const BUCKET_PRIORITY: Record<string, "BAJA" | "MEDIA" | "ALTA"> = {
  * que el Excel real de la cooperativa (código CM030…CM180): se dispara una
  * alerta nueva cada vez que una cuota entra a un bucket distinto, en vez de
  * un umbral arbitrario de "mora inicial/prolongada".
- * En esta demo se ejecuta on-demand vía endpoint; en producción debería
- * programarse como job diario.
+ *
+ * Se ejecuta a diario (job interno, ver server.ts) o a pedido ("Recalcular").
+ * Solo UNA ejecución a la vez en todo el sistema (candado de base de datos), y
+ * trabaja por lotes: antes hacía hasta 3 consultas POR CUOTA (con 50.000 cuotas
+ * abiertas, ~150.000 consultas); ahora son unas pocas consultas por lote.
+ * El resultado (estados, días de atraso y alertas) es el mismo que el de la
+ * versión por cuota; la llave única uq_alerts_open impide alertas abiertas
+ * repetidas incluso si dos ejecuciones coincidieran.
  */
-export async function recalculateAlerts(asOf: Date = new Date()) {
+export async function recalculateAlerts(asOf: Date = new Date()): Promise<{ created: number; skipped?: boolean }> {
+  const locked = await withJobLock("alerts-recalculate", () => recalculateAlertsUnlocked(asOf));
+  if (!locked.ran) return { created: 0, skipped: true };
+  return locked.result;
+}
+
+const CHUNK = 500;
+function chunks<T>(items: T[], size = CHUNK): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+interface NewAlert {
+  creditId: number;
+  installmentId: number;
+  type: string;
+  priority: "BAJA" | "MEDIA" | "ALTA";
+  message: string;
+}
+
+async function recalculateAlertsUnlocked(asOf: Date): Promise<{ created: number }> {
   const [policy, buckets] = await Promise.all([loadDelinquencyPolicy(pool), loadMoraBuckets(pool)]);
+  // Estados abiertos listados explícitamente (en vez de NOT IN) para poder usar el índice de status.
   const [installments] = await pool.query<any[]>(
-    `SELECT csi.*, c.id as credit_id_ref FROM credit_schedule_installments csi
+    `SELECT csi.id, csi.credit_id, csi.installment_number, csi.due_date, csi.status, csi.overdue_days
+     FROM credit_schedule_installments csi
      JOIN credits c ON c.id = csi.credit_id
-     WHERE csi.status NOT IN ('PAGADA','ANULADA') AND c.status NOT IN ('PAGADO','ANULADO')`
+     WHERE csi.status IN ('PENDIENTE','PARCIAL','VENCIDA','EN_MORA') AND c.status NOT IN ('PAGADO','ANULADO')`
   );
 
-  let created = 0;
+  const statusGroups = new Map<string, { overdueDays: number; status: string; ids: number[] }>();
+  const candidates: NewAlert[] = [];
 
   for (const inst of installments as any[]) {
     const dueDate = new Date(inst.due_date);
@@ -46,12 +77,10 @@ export async function recalculateAlerts(asOf: Date = new Date()) {
           : getMoraBucket(overdueDays, buckets).code === "CD001"
           ? "VENCIDA"
           : "EN_MORA";
-      await pool.query(`UPDATE credit_schedule_installments SET overdue_days = ?, status = ? WHERE id = ?`, [
-        overdueDays,
-        newStatus,
-        inst.id
-      ]);
-      inst.status = newStatus;
+      const key = `${overdueDays}|${newStatus}`;
+      const group = statusGroups.get(key) ?? { overdueDays, status: newStatus, ids: [] as number[] };
+      group.ids.push(inst.id);
+      statusGroups.set(key, group);
     }
 
     let type: string | null = null;
@@ -75,21 +104,42 @@ export async function recalculateAlerts(asOf: Date = new Date()) {
       }
     }
 
-    if (!type) continue;
-
-    const [existing] = await pool.query<any[]>(
-      `SELECT id FROM alerts WHERE installment_id = ? AND type = ? AND status = 'ABIERTA'`,
-      [inst.id, type]
-    );
-    if ((existing as any[]).length > 0) continue;
-
-    await pool.query(
-      `INSERT INTO alerts (credit_id, installment_id, type, priority, message) VALUES (?, ?, ?, ?, ?)`,
-      [inst.credit_id, inst.id, type, priority, message]
-    );
-    created++;
-    broadcastEvent("alert.created", { creditId: inst.credit_id, type, priority, message });
+    if (type) candidates.push({ creditId: inst.credit_id, installmentId: inst.id, type, priority, message });
   }
+
+  // 1) Estados y días de atraso: un UPDATE por cada combinación distinta (no por cuota).
+  for (const group of statusGroups.values()) {
+    for (const ids of chunks(group.ids, 1000)) {
+      await pool.query(`UPDATE credit_schedule_installments SET overdue_days = ?, status = ? WHERE id IN (?)`, [
+        group.overdueDays,
+        group.status,
+        ids
+      ]);
+    }
+  }
+
+  // 2) Alertas nuevas: una sola lectura de las abiertas y inserciones por lotes.
+  const [openRows] = await pool.query<any[]>(
+    `SELECT installment_id, type FROM alerts WHERE status = 'ABIERTA' AND installment_id IS NOT NULL`
+  );
+  const open = new Set((openRows as any[]).map((r) => `${r.installment_id}|${r.type}`));
+  const fresh = candidates.filter((c) => !open.has(`${c.installmentId}|${c.type}`));
+
+  let created = 0;
+  const events: { event: string; data: unknown }[] = [];
+  for (const batch of chunks(fresh)) {
+    // ON DUPLICATE KEY: red de seguridad ante la llave única (cuota, tipo, abierta).
+    const [result] = await pool.query<any>(
+      `INSERT INTO alerts (credit_id, installment_id, type, priority, message, open_flag) VALUES ?
+       ON DUPLICATE KEY UPDATE id = id`,
+      [batch.map((a) => [a.creditId, a.installmentId, a.type, a.priority, a.message, 1])]
+    );
+    created += Number(result.affectedRows ?? 0);
+    for (const a of batch) {
+      events.push({ event: "alert.created", data: { creditId: a.creditId, type: a.type, priority: a.priority, message: a.message } });
+    }
+  }
+  broadcastEvents(events);
 
   // Sincroniza el estado del crédito (VIGENTE/EN_MORA) con sus cuotas.
   await pool.query(
@@ -108,4 +158,27 @@ export async function recalculateAlerts(asOf: Date = new Date()) {
   );
 
   return { created };
+}
+
+/**
+ * Job diario: lo ejecuta UN solo proceso por día (reserva en job_runs). Si falla,
+ * devuelve la reserva para que el siguiente intento (cada 10 min) lo reintente.
+ */
+export async function runDailyAlertsJob(
+  now: Date = new Date(),
+  job: (asOf: Date) => Promise<{ created: number; skipped?: boolean }> = recalculateAlerts
+): Promise<{ ran: boolean; created?: number }> {
+  const day = now.toISOString().slice(0, 10);
+  if (!(await claimDailyRun("alerts-daily", day))) return { ran: false };
+  try {
+    const result = await job(now);
+    if (result.skipped) {
+      // Otra ejecución (p. ej. el botón "Recalcular") estaba en curso: se cuenta como hecho.
+      return { ran: true, created: 0 };
+    }
+    return { ran: true, created: result.created };
+  } catch (err) {
+    await releaseDailyRun("alerts-daily", day).catch(() => undefined);
+    throw err;
+  }
 }

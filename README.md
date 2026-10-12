@@ -468,6 +468,13 @@ Diagnóstico de escalabilidad, cambios realizados, mediciones y pendientes:
 - **Hash de contraseñas sin bloquear el servidor**: `bcrypt` nativo (con respaldo
   automático a `bcryptjs`) y SHA-256 para refresh tokens y tokens de restablecimiento.
   Con 30 logins simultáneos el tiempo total pasó de 5,3 s a 0,7 s.
-- Variables: `AUTH_RATE_LIMIT` (ver `backend/.env.example`).
+- **Job de alertas por lotes y a prueba de varios procesos**: 18× más rápido a 23.000
+  cuotas con el mismo resultado, una sola ejecución a la vez y una vez por día, y alertas
+  abiertas únicas. Alertas en vivo (SSE) que llegan aunque haya varios procesos Node.
+  Migración `021_multiprocess_guards.sql`.
+- **Salud y límites**: `/health` verifica la base de datos y devuelve el id del proceso
+  (`instance`); `/api` nunca se cachea (`no-store`); cola del pool limitada (503 al saturarse).
+- Variables: `AUTH_RATE_LIMIT`, `DB_POOL_SIZE`, `DB_QUEUE_LIMIT`, `DB_CONNECT_TIMEOUT_MS`,
+  `REQUEST_TIMEOUT_MS` (ver `backend/.env.example`).
 - Pruebas: `cd backend && npm test` (las que usan base de datos son opcionales; ver
   el documento de escalabilidad, sección 4).

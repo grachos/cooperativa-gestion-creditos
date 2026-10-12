@@ -1,23 +1,17 @@
-import type { Response } from "express";
+import crypto from "node:crypto";
+import { SseHub, type RealtimeEvent } from "./sse.hub.core.js";
+import { MysqlRealtimeStore } from "./sse.hub.mysql.js";
 
-interface Client {
-  userId: number;
-  res: Response;
-}
+/** Identificador de este proceso (también lo muestra /health para contar procesos). */
+export const instanceId = crypto.randomUUID().slice(0, 8);
 
-const clients: Client[] = [];
+const store = new MysqlRealtimeStore();
+export const sseHub = new SseHub({ instanceId, store });
 
-export function registerSseClient(userId: number, res: Response) {
-  clients.push({ userId, res });
-  res.on("close", () => {
-    const idx = clients.findIndex((c) => c.res === res);
-    if (idx >= 0) clients.splice(idx, 1);
-  });
-}
+export const registerSseClient = sseHub.register.bind(sseHub);
+export const broadcastEvent = sseHub.broadcast.bind(sseHub);
+export const broadcastEvents = (events: RealtimeEvent[]) => sseHub.broadcastMany(events);
+export const canAcceptSseClient = sseHub.canAccept.bind(sseHub);
 
-export function broadcastEvent(eventName: string, data: unknown) {
-  const payload = `event: ${eventName}\ndata: ${JSON.stringify(data)}\n\n`;
-  for (const client of clients) {
-    client.res.write(payload);
-  }
-}
+/** Borra del buzón los eventos de más de 10 minutos (los clientes los consultan cada pocos segundos). */
+export const purgeRealtimeEvents = () => store.purgeOlderThan(10);
