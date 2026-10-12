@@ -37,6 +37,8 @@ alertsRouter.get(
       throw new HttpError(401, "No autorizado");
     }
     const result = await recalculateAlerts();
+    // Deja rastro en los logs de Hostinger para verificar que la tarea programada (hPanel → Cron Jobs) corre.
+    console.log("[cron] alertas recalculadas:", JSON.stringify(result));
     res.json(result);
   })
 );
