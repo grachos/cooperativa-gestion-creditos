@@ -78,6 +78,14 @@ const envSchema = z
     DB_CONNECT_TIMEOUT_MS: z.coerce.number().int().min(1000).default(10000),
     // Tiempo máximo para recibir una petición completa (corta clientes lentos).
     REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1000).default(60000),
+    // Caché de reportes pesados (resumen mensual, detalle mensual, cartera vencida, buckets
+    // de mora, dashboard). 0 la desactiva (la coalescencia de peticiones simultáneas sigue).
+    REPORT_CACHE_TTL_SECONDS: z.coerce.number().int().min(0).max(3600).default(60),
+    // Registro de peticiones: "slow" (por defecto: solo 5xx y lentas), "all" (todas; para
+    // depurar) u "off". SLOW_*_MS: umbrales para marcar una petición/consulta como lenta.
+    REQUEST_LOG: z.enum(["off", "slow", "all"]).default("slow"),
+    SLOW_REQUEST_MS: z.coerce.number().int().min(1).default(1000),
+    SLOW_QUERY_MS: z.coerce.number().int().min(1).default(500),
     CRON_SECRET: z.string().min(16).optional()
   })
   ;

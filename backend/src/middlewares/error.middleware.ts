@@ -16,7 +16,7 @@ export function notFoundHandler(_req: Request, res: Response) {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function errorHandler(err: unknown, _req: Request, res: Response, _next: NextFunction) {
+export function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunction) {
   if (err instanceof ZodError) {
     return res.status(400).json({ error: "Datos inválidos", details: err.issues });
   }
@@ -47,8 +47,17 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
         : "Ya existe un registro con esos datos";
     return res.status(409).json({ error: message });
   }
-  console.error(err);
-  return res.status(500).json({ error: "Error interno del servidor" });
+  // Error inesperado: una línea estructurada con el id de la petición (el mismo que ve el
+  // usuario en la respuesta y en X-Request-Id), para rastrearlo en los logs sin pedirle
+  // detalles. No se registran cuerpo ni query string.
+  const e = err instanceof Error ? err : new Error(String(err));
+  console.error(
+    JSON.stringify({
+      t: "error", id: req?.id ?? null, m: req?.method, p: (req?.originalUrl ?? "").split("?")[0],
+      msg: e.message, stack: (e.stack ?? "").split("\n").slice(0, 6).join(" | ")
+    })
+  );
+  return res.status(500).json({ error: "Error interno del servidor", requestId: req?.id });
 }
 
 export function asyncHandler(fn: (req: Request, res: Response, next: NextFunction) => Promise<unknown>) {

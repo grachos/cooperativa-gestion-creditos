@@ -7,6 +7,7 @@ import { buildAmortizationSchedule } from "./schedule.service.js";
 import { recordAudit } from "../audit/audit.service.js";
 import { enqueueIntegrationEvent } from "../integration/integration.service.js";
 import { broadcastEvent } from "../alerts/sse.hub.js";
+import { invalidateReportCache } from "../reports/reportCache.js";
 import { getMoraBucket, loadDelinquencyPolicy, loadMoraBuckets } from "../delinquency/delinquency.service.js";
 import { round2 } from "../../utils/money.js";
 import { idempotent } from "../../middlewares/idempotent.js";
@@ -139,6 +140,7 @@ creditsRouter.post(
       return { id: creditId, creditNumber };
     });
 
+    invalidateReportCache();
     broadcastEvent("credit.disbursed", credit);
     res.status(201).json(credit);
   })
@@ -362,6 +364,7 @@ creditsRouter.post(
         return { id: newCreditId, creditNumber, refinancedFromCreditId: id };
       });
 
+    invalidateReportCache();
     broadcastEvent("credit.refinanced", result);
     res.status(201).json(result);
   })

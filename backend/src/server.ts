@@ -7,6 +7,17 @@ import { instanceId, purgeRealtimeEvents, sseHub } from "./modules/alerts/sse.hu
 import { runDailyAlertsJob } from "./modules/alerts/alerts.service.js";
 import { passwordImplementationName } from "./utils/password.js";
 
+// Errores que escapan de todo manejo: se dejan en el log (con el id del proceso) en vez de
+// perderse. Una excepción no capturada deja el proceso en estado indefinido: se registra y se
+// sale para que el hosting lo arranque limpio; un rechazo de promesa solo se registra.
+process.on("unhandledRejection", (reason) => {
+  console.error(JSON.stringify({ t: "unhandledRejection", i: instanceId, msg: String((reason as Error)?.stack ?? reason).slice(0, 800) }));
+});
+process.on("uncaughtException", (err) => {
+  console.error(JSON.stringify({ t: "uncaughtException", i: instanceId, msg: String(err?.stack ?? err).slice(0, 800) }));
+  process.exit(1);
+});
+
 // Sin top-level await: el hosting carga este archivo con require().
 const ready = env.AUTO_MIGRATE ? runMigrations() : Promise.resolve();
 

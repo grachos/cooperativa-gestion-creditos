@@ -11,7 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
  *   CONCURRENCY_TEST_DB=1 DB_HOST=127.0.0.1 DB_USER=… DB_PASSWORD=… DB_NAME=… npm test
  * ¡Usan datos de prueba y crean registros! Apúntelas a una base de pruebas.
  */
-const enabled = process.env.CONCURRENCY_TEST_DB === "1";
+const enabled = process.env.CONCURRENCY_TEST_DB === "1" || process.env.TEST_DB === "1";
 
 describe.skipIf(!enabled)("Concurrencia en operaciones de dinero (MySQL real)", () => {
   let server: Server;

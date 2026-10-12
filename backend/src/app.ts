@@ -23,12 +23,16 @@ import { integrationRouter } from "./modules/integration/integration.routes.js";
 import { adjustmentsRouter } from "./modules/credits/adjustments.routes.js";
 import { collectionsRouter } from "./modules/collections/collections.routes.js";
 import { usersRouter } from "./modules/users/users.routes.js";
+import { adminRouter } from "./modules/admin/metrics.routes.js";
+import { createRequestLog } from "./middlewares/requestLog.js";
 
 export const app = express();
 
 // Detrás del proxy de Vercel: sin esto req.ip es la IP del proxy y la
 // auditoría/registro de accesos guarda la misma IP para todos.
 app.set("trust proxy", 1);
+// Primero de todo: asigna X-Request-Id y registra respuestas 5xx / lentas (ver middlewares/requestLog.ts).
+app.use(createRequestLog({ mode: env.REQUEST_LOG, slowMs: env.SLOW_REQUEST_MS, instanceId }));
 app.use(helmet());
 app.use(cors({ origin: env.CORS_ORIGIN, credentials: true }));
 app.use(express.json({ limit: "1mb" }));
@@ -82,6 +86,7 @@ app.use("/api/v1/parameters", parametersRouter);
 app.use("/api/v1/audit", auditRouter);
 app.use("/api/v1/integration", integrationRouter);
 app.use("/api/v1/users", usersRouter);
+app.use("/api/v1/admin", adminRouter);
 
 // Frontend compilado (SPA): lo sirve el mismo proceso cuando STATIC_DIR existe.
 // Por defecto busca ../frontend/dist relativo al backend compilado.

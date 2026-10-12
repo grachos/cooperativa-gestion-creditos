@@ -4,6 +4,7 @@ import { adjustmentSchema, idParam } from "../../shared/schemas.js";
 import { asyncHandler, HttpError } from "../../middlewares/error.middleware.js";
 import { requireAuth, requirePermission } from "../../middlewares/auth.middleware.js";
 import { recordAudit } from "../audit/audit.service.js";
+import { invalidateReportCache } from "../reports/reportCache.js";
 import { idempotent } from "../../middlewares/idempotent.js";
 
 /**
@@ -51,6 +52,7 @@ adjustmentsRouter.post(
       reason: data.reason
     });
 
+    invalidateReportCache();
     res.status(201).json({ id: result.insertId });
   })
 );

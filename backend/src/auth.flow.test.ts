@@ -15,7 +15,7 @@ vi.mock("./modules/auth/mailer.js", () => ({
  * Flujo de autenticación contra MySQL real (opcional):
  *   AUTH_TEST_DB=1 DB_HOST=… DB_USER=… DB_PASSWORD=… DB_NAME=… npm test
  */
-describe.skipIf(process.env.AUTH_TEST_DB !== "1")("Autenticación: tokens con SHA-256 y compatibilidad con bcrypt", () => {
+describe.skipIf(process.env.AUTH_TEST_DB !== "1" && process.env.TEST_DB !== "1")("Autenticación: tokens con SHA-256 y compatibilidad con bcrypt", () => {
   let server: Server;
   let base: string;
   let pool: typeof import("./db/pool.js").pool;

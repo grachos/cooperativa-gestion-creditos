@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
  * (opcional; crea datos de prueba, usar una base de pruebas):
  *   JOBS_TEST_DB=1 DB_HOST=… DB_USER=… DB_PASSWORD=… DB_NAME=… npm test
  */
-describe.skipIf(process.env.JOBS_TEST_DB !== "1")("Varios procesos: candados, job diario, alertas únicas y buzón SSE (MySQL real)", () => {
+describe.skipIf(process.env.JOBS_TEST_DB !== "1" && process.env.TEST_DB !== "1")("Varios procesos: candados, job diario, alertas únicas y buzón SSE (MySQL real)", () => {
   let pool: typeof import("./db/pool.js").pool;
   let jobLock: typeof import("./utils/jobLock.js");
   let service: typeof import("./modules/alerts/alerts.service.js");

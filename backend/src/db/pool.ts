@@ -1,6 +1,7 @@
 import mysql from "mysql2/promise";
 import type { PoolConnection as MysqlConnection } from "mysql2/promise";
 import { env } from "../config/env.js";
+import { recordQueryTiming } from "../utils/queryTiming.js";
 
 /**
  * Pool de MySQL/MariaDB (Hostinger). Tamaño y cola: DB_POOL_SIZE / DB_QUEUE_LIMIT. Expone la misma interfaz que usa todo el
@@ -54,8 +55,13 @@ async function runQuery<T>(
   sql: string,
   params?: unknown[]
 ): Promise<QueryResultTuple<T>> {
-  const [result, fields] = await executor.query(sql, params);
-  return [result as T, (fields ?? []) as unknown[]];
+  const started = process.hrtime.bigint();
+  try {
+    const [result, fields] = await executor.query(sql, params);
+    return [result as T, (fields ?? []) as unknown[]];
+  } finally {
+    recordQueryTiming(Number(process.hrtime.bigint() - started) / 1e6, sql, env.SLOW_QUERY_MS);
+  }
 }
 
 export interface PoolConnection {
@@ -82,6 +88,15 @@ export const pool = {
   },
   end(): Promise<void> {
     return mysqlPool.end();
+  },
+  /** Estado del pool (campos internos de mysql2; si cambian, devuelve null en vez de fallar). */
+  stats(): { total: number | null; free: number | null; queued: number | null } {
+    try {
+      const p = (mysqlPool as any).pool;
+      return { total: p._allConnections.length, free: p._freeConnections.length, queued: p._connectionQueue.length };
+    } catch {
+      return { total: null, free: null, queued: null };
+    }
   }
 };
 

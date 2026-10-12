@@ -7,6 +7,7 @@ import { allocatePayment } from "./allocation.service.js";
 import { recordAudit } from "../audit/audit.service.js";
 import { enqueueIntegrationEvent } from "../integration/integration.service.js";
 import { broadcastEvent } from "../alerts/sse.hub.js";
+import { invalidateReportCache } from "../reports/reportCache.js";
 import { idempotent } from "../../middlewares/idempotent.js";
 
 export const paymentsRouter = Router();
@@ -96,6 +97,7 @@ paymentsRouter.post(
       return { paymentId, allocations, creditStatus: newCreditStatus };
     });
 
+    invalidateReportCache();
     broadcastEvent("payment.registered", { creditId: data.creditId, paymentId: result.paymentId });
     res.status(201).json(result);
   })
@@ -167,6 +169,7 @@ paymentsRouter.post(
       await enqueueIntegrationEvent(conn, "PAYMENT_REVERSED", { paymentId: id, reason });
     });
 
+    invalidateReportCache();
     broadcastEvent("payment.reversed", { paymentId: id });
     res.json({ id, status: "REVERSADO" });
   })

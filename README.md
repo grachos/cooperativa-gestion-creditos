@@ -474,7 +474,16 @@ Diagnóstico de escalabilidad, cambios realizados, mediciones y pendientes:
   Migración `021_multiprocess_guards.sql`.
 - **Salud y límites**: `/health` verifica la base de datos y devuelve el id del proceso
   (`instance`); `/api` nunca se cachea (`no-store`); cola del pool limitada (503 al saturarse).
+- **Índices medidos con EXPLAIN** (migración `022`): p. ej. el listado de auditoría pasó de
+  527 ms a 0,6 ms con 1 M de filas. **Reportes pesados con caché y coalescencia**: 20 usuarios
+  abriendo el mismo reporte ya no bloquean al resto. `pagos.csv` por tramos (`?from=&to=`) y con
+  escapado contra inyección de fórmulas de Excel.
+- **Observabilidad**: cada petición lleva `X-Request-Id`; log JSON de errores y peticiones lentas;
+  consultas lentas registradas sin parámetros; `GET /api/v1/admin/metrics` (permiso `audit:read`)
+  con memoria, latencias, pool y caché. Qué vigilar y cómo configurar el monitor externo:
+  `docs/escalabilidad.md` §10.
 - Variables: `AUTH_RATE_LIMIT`, `DB_POOL_SIZE`, `DB_QUEUE_LIMIT`, `DB_CONNECT_TIMEOUT_MS`,
-  `REQUEST_TIMEOUT_MS` (ver `backend/.env.example`).
+  `REQUEST_TIMEOUT_MS`, `REPORT_CACHE_TTL_SECONDS`, `REQUEST_LOG`, `SLOW_REQUEST_MS`,
+  `SLOW_QUERY_MS` (ver `backend/.env.example`).
 - Pruebas: `cd backend && npm test` (las que usan base de datos son opcionales; ver
   el documento de escalabilidad, sección 4).

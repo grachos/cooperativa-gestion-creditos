@@ -3,12 +3,15 @@ import { pool } from "../../db/pool.js";
 import { requireAuth, requirePermission } from "../../middlewares/auth.middleware.js";
 import { asyncHandler, HttpError } from "../../middlewares/error.middleware.js";
 import { getMoraBucket, loadMoraBuckets } from "../delinquency/delinquency.service.js";
+import { reportCache } from "./reportCache.js";
+import { csvRaw, csvText } from "../../utils/csv.js";
 
 export const reportsRouter = Router();
 reportsRouter.use(requireAuth, requirePermission("reports:read"));
 
 reportsRouter.get(
   "/dashboard",
+  reportCache.middleware(),
   asyncHandler(async (_req, res) => {
     const [[carteraRows], [morosRows], [pagosRows], [solicitudesRows], [alertasRows]] = await Promise.all([
       pool.query<any[]>(
@@ -64,6 +67,7 @@ reportsRouter.get(
 
 reportsRouter.get(
   "/overdue",
+  reportCache.middleware(),
   asyncHandler(async (_req, res) => {
     const [rows] = await pool.query<any[]>(
       `SELECT csi.*, c.credit_number, a.first_name, a.last_name
@@ -86,6 +90,7 @@ reportsRouter.get(
  */
 reportsRouter.get(
   "/mora-buckets",
+  reportCache.middleware(),
   asyncHandler(async (_req, res) => {
     const [rows] = await pool.query<any[]>(
       `SELECT csi.overdue_days, (csi.total_due - csi.principal_paid - csi.interest_paid) AS outstanding
@@ -139,6 +144,7 @@ reportsRouter.get(
  */
 reportsRouter.get(
   "/monthly-summary",
+  reportCache.middleware(),
   asyncHandler(async (req, res) => {
     const year = req.query.year ? Number(req.query.year) : null;
     const month = req.query.month ? Number(req.query.month) : null;
@@ -241,6 +247,7 @@ reportsRouter.get(
  */
 reportsRouter.get(
   "/credits-monthly-detail",
+  reportCache.middleware(),
   asyncHandler(async (req, res) => {
     const year = Number(req.query.year);
     const month = Number(req.query.month);
@@ -373,19 +380,63 @@ reportsRouter.get(
   })
 );
 
+/**
+ * Exportación de pagos en CSV. Se lee POR TRAMOS (5.000 filas) con paginación por llave
+ * (no OFFSET) y se escribe a medida que llega: memoria acotada y la conexión del pool se
+ * devuelve entre tramos (antes cargaba TODOS los pagos en memoria y retenía el hilo ~1,5 s
+ * con 300.000 pagos). Filtros opcionales: ?from=AAAA-MM-DD&to=AAAA-MM-DD (fecha de recibido).
+ * Los campos de texto se escapan contra inyección de fórmulas de Excel (ver utils/csv.ts).
+ */
 reportsRouter.get(
   "/payments.csv",
-  asyncHandler(async (_req, res) => {
-    const [rows] = await pool.query<any[]>(
-      `SELECT p.id, p.credit_id, c.credit_number, p.received_date, p.amount, p.payment_method, p.status
-       FROM payments p JOIN credits c ON c.id = p.credit_id ORDER BY p.received_date DESC`
-    );
-    const header = "id,credit_id,credit_number,received_date,amount,payment_method,status\n";
-    const body = (rows as any[])
-      .map((r) => `${r.id},${r.credit_id},${r.credit_number},${r.received_date},${r.amount},${r.payment_method},${r.status}`)
-      .join("\n");
+  asyncHandler(async (req, res) => {
+    const date = /^\d{4}-\d{2}-\d{2}$/;
+    const from = typeof req.query.from === "string" ? req.query.from : undefined;
+    const to = typeof req.query.to === "string" ? req.query.to : undefined;
+    if ((from && !date.test(from)) || (to && !date.test(to))) {
+      throw new HttpError(400, "Las fechas deben tener el formato AAAA-MM-DD");
+    }
+
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", "attachment; filename=pagos.csv");
-    res.send(header + body);
+    res.write("id,credit_id,credit_number,received_date,amount,payment_method,status\n");
+
+    const CHUNK = 5000;
+    let closed = false;
+    res.on("close", () => (closed = true));
+    let cursor: { date: string; id: number } | null = null;
+    for (;;) {
+      if (closed) return;
+      const conds: string[] = [];
+      const args: unknown[] = [];
+      if (from) { conds.push("p.received_date >= ?"); args.push(from); }
+      if (to) { conds.push("p.received_date <= ?"); args.push(to); }
+      if (cursor) {
+        conds.push("(p.received_date < ? OR (p.received_date = ? AND p.id < ?))");
+        args.push(cursor.date, cursor.date, cursor.id);
+      }
+      const where = conds.length > 0 ? `WHERE ${conds.join(" AND ")}` : "";
+      const [rows] = await pool.query<any[]>(
+        `SELECT p.id, p.credit_id, c.credit_number, p.received_date, p.amount, p.payment_method, p.status
+         FROM payments p JOIN credits c ON c.id = p.credit_id
+         ${where} ORDER BY p.received_date DESC, p.id DESC LIMIT ?`,
+        [...args, CHUNK]
+      );
+      const batch = rows as any[];
+      if (batch.length > 0) {
+        const text = batch
+          .map(
+            (r) =>
+              `${csvRaw(r.id)},${csvRaw(r.credit_id)},${csvText(r.credit_number)},${csvRaw(r.received_date)},${csvRaw(r.amount)},${csvText(r.payment_method)},${csvText(r.status)}`
+          )
+          .join("\n");
+        // Respeta la contrapresión: si el cliente descarga lento, no se acumula memoria.
+        if (!res.write(text + "\n")) await new Promise<void>((resolve) => { res.once("drain", resolve); res.once("close", resolve); });
+        const last = batch[batch.length - 1];
+        cursor = { date: last.received_date, id: last.id };
+      }
+      if (batch.length < CHUNK) break;
+    }
+    res.end();
   })
 );

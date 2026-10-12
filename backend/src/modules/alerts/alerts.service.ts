@@ -1,6 +1,7 @@
 import { pool } from "../../db/pool.js";
 import { calculateOverdueDays, getMoraBucket, loadDelinquencyPolicy, loadMoraBuckets } from "../delinquency/delinquency.service.js";
 import { broadcastEvents } from "./sse.hub.js";
+import { invalidateReportCache } from "../reports/reportCache.js";
 import { claimDailyRun, releaseDailyRun, withJobLock } from "../../utils/jobLock.js";
 
 const BUCKET_PRIORITY: Record<string, "BAJA" | "MEDIA" | "ALTA"> = {
@@ -157,6 +158,7 @@ async function recalculateAlertsUnlocked(asOf: Date): Promise<{ created: number 
      )`
   );
 
+  invalidateReportCache(); // cambiaron días de atraso y estados de cuotas/créditos
   return { created };
 }
 

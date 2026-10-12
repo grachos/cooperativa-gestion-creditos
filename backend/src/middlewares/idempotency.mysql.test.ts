@@ -8,7 +8,7 @@ import { defineIdempotencySuite } from "./idempotency.suite.js";
  *   IDEMPOTENCY_TEST_DB=1 DB_HOST=127.0.0.1 DB_USER=... DB_PASSWORD=... DB_NAME=... \
  *   JWT_ACCESS_SECRET=xxxxxxxxxxxx JWT_REFRESH_SECRET=xxxxxxxxxxxx npm test
  */
-const enabled = process.env.IDEMPOTENCY_TEST_DB === "1";
+const enabled = process.env.IDEMPOTENCY_TEST_DB === "1" || process.env.TEST_DB === "1";
 
 if (!enabled) {
   describe.skip("Idempotency-Key (mysql) — defina IDEMPOTENCY_TEST_DB=1 para ejecutarla", () => {});

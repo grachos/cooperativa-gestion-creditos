@@ -30,12 +30,12 @@ para cientos o miles de usuarios concurrentes. Riesgos principales detectados:
 | 8 | P0 | R | Pool de 10 conexiones sin `queueLimit` ni timeouts | 🔶 cola limitada + 503, timeout de conexión y de petición (§3.8); falta fijar `DB_POOL_SIZE` con `max_user_connections` (§5) |
 | 9 | P0 | R | SSE ocupa una conexión por pestaña, sin heartbeat | ✅ latido, topes por usuario y globales, limpieza de conexiones muertas (§3.7) |
 | 10 | P1 | C | Job de alertas: N+1 y sin exclusión mutua (duplicados) | ✅ §3.5 y §3.6 |
-| 11 | P1 | C | `audit_logs` sin índices; listados ordenados sin índice; búsqueda `LIKE '%x%'` | ⏳ (validar con EXPLAIN) |
-| 12 | P1 | C | Reportes y exportaciones sin límite (cargan todo el histórico) | ⏳ |
+| 11 | P1 | C | `audit_logs` sin índices; listados ordenados sin índice; búsqueda `LIKE '%x%'` | ✅ índices medidos con EXPLAIN (§3.10); la búsqueda `%x%` sigue igual (compromiso en §3.10) |
+| 12 | P1 | C | Reportes y exportaciones sin límite (cargan todo el histórico) | 🔶 `pagos.csv` por tramos con filtros (§3.12) y reportes pesados con caché + coalescencia (§3.11); faltan `export/accounting` y `/reports/overdue` (devuelve toda la cartera vencida; requiere paginar en la interfaz) |
 | 13 | P1 | C | Correo de restablecimiento dentro de la petición, sin timeout SMTP | ⏳ |
-| 14 | P1 | C | Sin logs de peticiones, métricas ni alertas; `/health` no toca la base | 🔶 `/health` ya verifica la base e identifica el proceso (§3.8); faltan logs de peticiones, métricas y alertas |
+| 14 | P1 | C | Sin logs de peticiones, métricas ni alertas; `/health` no toca la base | 🔶 log estructurado con id de petición, consultas lentas, `/admin/metrics`, errores no capturados (§3.13); falta un monitor externo con alertas (acción de operación, §10) |
 | 15 | P1 | R | Respuestas de la API sin `Cache-Control` (riesgo con CDN/LiteSpeed cache) | ✅ `Cache-Control: no-store` en toda `/api` (§3.8) |
-| 16 | P2 | C | `COUNT(*)` en cada listado; `parameters` se lee en casi cada operación | ⏳ |
+| 16 | P2 | C | `COUNT(*)` en cada listado; `parameters` se lee en casi cada operación | ⏳ (el conteo de auditoría cuesta 112 ms con 1 M de filas y crece linealmente) |
 
 El detalle de índices recomendados, de caché, de tareas asíncronas y el plan de
 pruebas de carga está en las secciones 6 a 8.
@@ -198,6 +198,96 @@ pool ni para una consulta; `DB_QUEUE_LIMIT` y `REQUEST_TIMEOUT_MS` son la conten
 disponible. Un timeout por consulta requeriría `max_execution_time`, que difiere entre
 MySQL y MariaDB; queda como pendiente si las pruebas de carga lo justifican.
 
+### 3.10 Índices (medidos con EXPLAIN sobre ~1,5 millones de filas)
+
+**Método:** base de pruebas con 10.000 asociados, 15.000 créditos (180.000 cuotas), 300.000 pagos,
+1.000.000 de filas de auditoría, 200.000 registros de login y 50.000 alertas (439 MB). Se midió
+cada consulta real de la app (plan de `EXPLAIN` + mediana de tiempos) con
+`backend/scripts/explain-bench.mjs`, se aplicó la migración `022_query_indexes.sql` (9 s sobre
+esos datos) y se volvió a medir. Motor local: MariaDB 10.11; **el de Hostinger puede elegir
+planes distintos: repetir el script allí (§4) antes de dar los números por buenos.**
+
+| Consulta | Antes | Después |
+|---|---|---|
+| Auditoría: listado / por entidad | 527 / 540 ms (escaneo de ~980.000 filas + filesort) | **0,6 / 0,6 ms** |
+| Auditoría: conteo total | 490 ms | 112 ms |
+| Alertas atendidas (listado) | 59 ms | 0,7 ms |
+| Alertas abiertas (listado) | 7,7 ms | 0,6 ms |
+| Login: conteo de fallos | 7,0 ms | 0,4 ms |
+| Créditos: listado por estado | 11,2 ms | 1,1 ms |
+| Dashboard: pagos de 30 días / créditos vencidos | 61 / 42 ms | 17 / 14 ms |
+| Solicitudes, asociados: listados | 1–4 ms (con filesort) | ≈1 ms (sin filesort) |
+| **Búsqueda de asociados por cédula** | 6 ms | **19 ms (peor)** |
+
+- **Compromiso conocido:** el índice por fecha acelera el listado de asociados (el más usado), pero
+  la búsqueda `LIKE '%texto%'` no puede usar ningún índice B-tree y ahora el optimizador la recorre
+  en orden de fecha (más lento que antes: 6 → 19 ms con 10.000 asociados). Es aceptable a esta
+  escala; la solución limpia, si crece, es buscar por prefijo (`'texto%'`) cuando el texto sea
+  numérico, con un índice sobre `id_number` (cambia el comportamiento de la búsqueda: no se hizo sin
+  consultarlo).
+- **Qué los índices NO arreglan:** los reportes pesados siguen casi igual (detalle mensual 4,7 → 3,5 s,
+  resumen mensual 1,0 s, cartera vencida 223 → 189 ms). Son cálculos sobre todo el historial; la
+  palanca es la caché (§3.11), no un índice.
+- **Costo de escritura** (inserción masiva de 300.000 filas): auditoría 2,2 → 4,0 s (2 índices
+  nuevos), pagos 2,0 → 2,5 s. Por fila son microsegundos; la app inserta pocas filas por petición.
+- Se eliminaron 5 índices que quedaron redundantes (prefijo de uno nuevo): `idx_alerts_status`,
+  `idx_credits_status`, `idx_applications_status`, `idx_payments_credit`, `idx_installments_status`.
+- La migración es **repetible** (CREATE/DROP condicionales) y crea los nuevos antes de borrar los
+  redundantes, para que ninguna llave foránea quede sin índice.
+
+### 3.11 Caché de reportes con coalescencia
+
+**Problema (medido):** con 20 usuarios abriendo el mismo reporte a la vez, cada uno disparaba su propio
+cálculo. El detalle mensual tardó **21,9 s en total y un listado de créditos ajeno esperó 19 s**
+(el pool de 10 conexiones se agotó); el resumen mensual, 5,2 s y 4,4 s de espera.
+
+**Solución:** `utils/responseCache.ts`, middleware `reportCache.middleware()` en
+`/reports/dashboard`, `/overdue`, `/mora-buckets`, `/monthly-summary` y `/credits-monthly-detail`:
+resultado fresco → se devuelve sin tocar la base; cálculo en curso → las demás peticiones esperan
+**ese** resultado (una sola consulta pesada en vez de N); un error nunca se cachea.
+
+| Escenario (20 usuarios simultáneos) | Sin coalescencia | Con coalescencia |
+|---|---|---|
+| Detalle mensual por crédito | 21,9 s en total; listado ajeno esperó 19.107 ms | 5,5 s en total (1 cálculo); listado ajeno 11 ms |
+| Resumen mensual | 5,2 s; listado ajeno 4.383 ms | 1,06 s (1 cálculo); listado ajeno 24 ms |
+| Repetir el reporte (dentro del TTL) | — | 3 ms (resumen), 52 ms (detalle, por serializar 14.850 filas) |
+
+- **TTL:** `REPORT_CACHE_TTL_SECONDS` (60; 0 = sin guardar, pero la coalescencia sigue). Las escrituras
+  que cambian estos datos (pago, reverso, desembolso, refinanciación, ajuste, recálculo de alertas)
+  invalidan la caché del proceso (`invalidateReportCache()`); verificado con una prueba: tras registrar
+  un pago el dashboard refleja el monto de inmediato.
+- **Seguridad:** solo se cachean respuestas **idénticas para todo usuario con `reports:read`**
+  (agregados de cartera). La clave es la URL, no el usuario: **nunca** aplicar este middleware a
+  datos por usuario o personales. La API además lleva `Cache-Control: no-store`.
+- **Límite:** la caché es por proceso; si hubiera varios, otro proceso puede mostrar datos de hasta el TTL.
+
+### 3.12 Exportación de pagos por tramos y escapado de CSV
+
+`GET /reports/payments.csv` cargaba **todos** los pagos en memoria (1,5 s y ~300.000 objetos con 300.000
+pagos). Ahora lee por tramos de 5.000 filas con paginación por llave (sin `OFFSET`), escribe a medida
+que llega (con contrapresión) y devuelve la conexión del pool entre tramos. Filtros opcionales
+`?from=AAAA-MM-DD&to=AAAA-MM-DD` (400 si el formato es inválido). Verificado con 300.000 pagos: 300.000
+filas, ids únicos, orden por fecha descendente, 3,2 s extremo a extremo; con filtro de seis meses, 49.016
+filas en 0,3 s. Nuevo índice `idx_payments_received (received_date)` para el orden.
+
+Además cierra el hallazgo de seguridad **SEC-010**: los campos de texto se escapan (`utils/csv.ts`): las
+comas y comillas se citan y un valor que empiece por `= + - @` se neutraliza para que Excel no lo ejecute
+como fórmula (los montos numéricos no se tocan).
+
+### 3.13 Observabilidad
+
+| Pieza | Detalle |
+|---|---|
+| `X-Request-Id` | Cada petición recibe un id (o conserva el del cliente si es válido). Aparece en el log y en la respuesta; los errores 500 lo devuelven también en el cuerpo (`requestId`): con el id que cite el usuario se encuentra el error exacto en los logs. |
+| Log de peticiones | Una línea JSON por petición: `{"t":"req","id","m","p","s","ms","u","i"}` (método, ruta, estado, duración, usuario, proceso). `REQUEST_LOG=slow` (por defecto) solo registra las 5xx y las lentas (`SLOW_REQUEST_MS`, 1000); `all` registra todas (para depurar); `off` ninguna. **Nunca** se registran query string (el SSE lleva el token ahí), cabeceras ni cuerpos. `/health` y los archivos estáticos no se registran. |
+| Consultas lentas | `{"t":"slowq","ms","sql"}` para consultas de más de `SLOW_QUERY_MS` (500): SQL normalizado **sin parámetros** (pueden ser datos personales). |
+| Errores | `{"t":"error",...}` con id, ruta, mensaje y 6 líneas de pila; `unhandledRejection` se registra; `uncaughtException` se registra y el proceso sale para que el hosting lo arranque limpio. |
+| `GET /api/v1/admin/metrics` | Solo con permiso `audit:read` (ADMIN y CONTADORA). Memoria, retraso del event loop (p50/p99/máx), peticiones por clase de estado con latencias p50/p95/p99, estado del pool (total/libres/en cola), consultas lentas recientes, conexiones SSE y estadísticas de la caché de reportes. **Es de este proceso y se reinicia cuando el hosting lo recicla.** |
+
+Ejemplo real (base de pruebas grande, un reporte pesado): la consulta aparece en el log como
+`{"t":"slowq","ms":3282,"sql":"WITH bounds AS ( SELECT CAST(? AS DATE) ..."}` y, a continuación,
+`{"t":"req","id":"b1cf1b6a4358","m":"GET","p":"/api/v1/reports/credits-monthly-detail","s":200,"ms":3338,"u":64,"i":"8e5e5484","slow":true}`.
+
 ### 3.9 Incidente: migración 021 interrumpida dejó el sitio caído (2026-10-12)
 
 **Qué pasó:** al desplegar la migración 021, el proceso se reinició a mitad de arranque
@@ -244,6 +334,19 @@ env $DB JOBS_TEST_DB=1 npm test           # candados, job diario, alertas única
 # Todo junto (el archivo de autenticación hace muchos logins: subir el límite en la base de pruebas):
 env $DB AUTH_RATE_LIMIT=100000 CONCURRENCY_TEST_DB=1 AUTH_TEST_DB=1 IDEMPOTENCY_TEST_DB=1 JOBS_TEST_DB=1 npm test
 ```
+Atajo: `TEST_DB=1` activa **todas** las pruebas con base de datos (más `AUTH_RATE_LIMIT=100000`, porque
+la de autenticación hace muchos logins). 96 pruebas, repetidas 3 veces seguidas sobre bases nuevas.
+
+Plan de ejecución y tiempos de las consultas reales (SOLO LECTURA; usar una base de pruebas con datos
+sembrados, nunca producción):
+
+```bash
+env $DB node scripts/explain-bench.mjs resultado.json    # tabla: tiempo, filas, filesort, índice usado
+env $DB ONLY="auditoría" RUNS=5 node scripts/explain-bench.mjs
+```
+Las consultas están copiadas de los archivos de rutas (y los reportes grandes se extraen del propio
+código): si cambia una consulta, actualizar el script.
+
 Las pruebas de `sse.hub.test.ts` (latido, topes, dos procesos simulados) y de
 `app.health.test.ts` (salud, `no-store`, cola del pool) no necesitan base de datos.
 
@@ -269,26 +372,22 @@ el binario nativo no se pudo cargar (la app funciona igual, pero más lento bajo
 5. **Índices reales:** `SHOW INDEX FROM payments;` (y las demás tablas de la sección 6).
 6. **Planes de ejecución:** `EXPLAIN` de cada consulta de la sección 6 sobre datos sembrados en un entorno de pruebas.
 
-## 6. Índices recomendados (pendiente; validar con EXPLAIN antes de crearlos)
+## 6. Índices: estado
 
-| Consulta | Índice | Motivo |
-|---|---|---|
-| `audit_logs [WHERE entity=?] ORDER BY created_at DESC LIMIT` | `(entity, created_at)`, `(created_at)` | Hoy recorre y ordena toda la tabla |
-| Job: `alerts WHERE installment_id=? AND type=? AND status='ABIERTA'` | `(installment_id, type, status)`; idealmente una llave única que evite duplicados | Se ejecuta por cada cuota |
-| `alerts WHERE status=? [AND priority=?] ORDER BY created_at DESC` | `(status, priority, created_at)` (reemplaza `idx_alerts_status`) | Evita filesort |
-| `credits [WHERE status=?] ORDER BY created_at DESC` | `(status, created_at)`, `(created_at)` | Listado de cartera |
-| `credit_applications [WHERE status…] ORDER BY created_at DESC` | `(status, created_at)` | Listado de solicitudes |
-| `associates ORDER BY created_at DESC` y búsqueda | `(created_at)`; la búsqueda con `'%x%'` no usa índice: usar prefijo (`'x%'`) o FULLTEXT | Búsqueda |
-| Reportes por `payments.received_date` | `(status, received_date)` | Dashboard y reportes mensuales |
-| `payments WHERE credit_id=? ORDER BY received_date DESC` | `(credit_id, received_date)` (reemplaza `idx_payments_credit`) | Detalle del crédito |
-| Cartera vencida | `credit_schedule_installments (status, overdue_days)`; reescribir `NOT IN (…)` como `IN (…)` | `NOT IN` impide usar el índice |
-| `login_activity WHERE user_id=? AND event_type=? AND created_at>…` | `(user_id, event_type, created_at)` | Se ejecuta en cada login |
+Implementados en la migración `022_query_indexes.sql` (resultados en §3.10). Pendiente / a vigilar:
 
-Evitar también `SELECT *` en listados (arrastra columnas JSON de auditoría y snapshots).
+- **Conteo de auditoría** (`SELECT COUNT(*) FROM audit_logs`): 112 ms con 1 M de filas, crece linealmente.
+  Opciones cuando moleste: limitar el conteo (mostrar "más de 10.000"), o llevar un contador aparte.
+  La interfaz actual no tiene pantalla de auditoría; solo la API.
+- **Búsqueda de asociados** `LIKE '%x%'`: ver el compromiso de §3.10.
+- **Retención:** `audit_logs`, `login_activity`, `realtime_events` e `idempotency_keys` crecen sin límite
+  (las dos últimas se purgan solas). Definir cuánto tiempo se conservan auditoría y accesos.
+- Evitar `SELECT *` en listados (arrastra las columnas JSON de auditoría y los snapshots del crédito):
+  no se tocó porque cambia la forma de la respuesta que usa la interfaz.
 
 ## 7. Caché y tareas asíncronas (pendiente)
 
-- **Caché en memoria del proceso (TTL corto):** `parameters` (60 s; invalidar al editar), `/reports/dashboard` (30–60 s), `/reports/monthly-summary` (15 min o tabla resumen). Alcance global, solo datos agregados sin información personal.
+- **Hecho (§3.11):** caché con coalescencia de los reportes pesados. **Pendiente:** `parameters` (60 s; invalidar al editar), alcance global, solo configuración.
 - **No cachear:** detalle de crédito, asociados, pagos, auditoría y autenticación. Añadir `Cache-Control: no-store` a `/api/*`.
 - **Redis:** no disponible en hosting compartido ni necesario hoy; solo al pasar a VPS/Cloud con varias instancias.
 - **Asíncrono:** correo de restablecimiento (job con reintentos 1/5/15 min, SMTP con timeout de 10 s, respuesta 204 inmediata); recálculo de alertas con `GET_LOCK` para un único ejecutor y escritura por lotes; exportaciones en stream con tope por rango de fechas. Reutilizar el patrón de cola en base de datos de `integration_events`.
@@ -315,10 +414,28 @@ Evitar también `SELECT *` en listados (arrastra columnas JSON de auditoría y s
 4. Pruebas de carga en entorno de pruebas (§8).
 5. Según resultados: caché de parámetros y reportes, exportaciones en stream, sondeo en lugar de SSE, y salto a VPS/Cloud si se confirma escala de "miles".
 
-## 10. Historial
+## 10. Operación: monitoreo y alertas (acciones pendientes del dueño del sistema)
+
+Lo que ya está en el código (§3.13) permite diagnosticar; falta lo que avisa **sin que nadie mire**:
+
+1. **Monitor externo de disponibilidad** (gratuito, p. ej. UptimeRobot o similar): vigilar
+   `https://coomulnissi.cc/health` cada 5 min con alerta por correo si no responde 200 o si el
+   cuerpo no contiene `"status":"ok"`. `/health` devuelve 503 cuando la base de datos falla y su
+   campo `instance` ayuda a contar procesos.
+2. **Revisar los logs de Hostinger** (hPanel → Node.js → Logs de ejecución) buscando `"t":"error"`,
+   `"t":"slowq"` y `"slow":true`. Con el id de la petición que cite un usuario se llega al error exacto.
+3. **Mirar `/api/v1/admin/metrics`** (con un usuario ADMIN) durante una jornada de uso y tras cada
+   cambio de rendimiento: p95 de latencia, retraso del event loop (alerta si p99 > 200 ms), pool
+   (`queued` > 0 sostenido = saturación) y consultas lentas.
+4. **Ruta de aumento:** para historia de métricas y alertas automáticas (CPU, memoria, p95) hace falta
+   un sistema externo (Grafana Cloud, Better Stack, etc.) o pasar a VPS; con hosting compartido no hay
+   acceso a esas métricas del servidor.
+
+## 11. Historial
 
 | Fecha | Cambio |
 |---|---|
+| 2026-10-13 | Bloque 3: índices medidos con EXPLAIN sobre 1,5 M de filas (migración 022, auditoría 527 → 0,6 ms); caché de reportes con coalescencia (20 usuarios: 21,9 s → 5,5 s, sin bloquear al resto); `pagos.csv` por tramos con filtros y escapado de CSV (SEC-010); observabilidad (id de petición, log estructurado, consultas lentas, `/admin/metrics`, errores no capturados); herramienta `explain-bench.mjs`; `TEST_DB=1`. |
 | 2026-10-12 | Incidente: la migración 021 quedó a medias y el sitio cayó; migraciones repetibles + candado entre procesos (§3.9). |
 | 2026-10-12 | Bloque 2: job de alertas por lotes (18× más rápido, mismo resultado), exclusión mutua y ejecución diaria única (`job_runs`, `GET_LOCK`), alertas únicas (`open_flag`), SSE entre procesos con latido y topes, pool con cola limitada, `/health` real, `no-store` en la API, apagado ordenado. Migración 021. |
 | 2026-10-12 | Diagnóstico inicial. Corregidos #1–#6 (§3). Migración 020. `AUTH_RATE_LIMIT`. Refresh con token inválido: 500 → 401. |
