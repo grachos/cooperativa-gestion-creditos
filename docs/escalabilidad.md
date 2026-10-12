@@ -198,6 +198,35 @@ pool ni para una consulta; `DB_QUEUE_LIMIT` y `REQUEST_TIMEOUT_MS` son la conten
 disponible. Un timeout por consulta requeriría `max_execution_time`, que difiere entre
 MySQL y MariaDB; queda como pendiente si las pruebas de carga lo justifican.
 
+### 3.9 Incidente: migración 021 interrumpida dejó el sitio caído (2026-10-12)
+
+**Qué pasó:** al desplegar la migración 021, el proceso se reinició a mitad de arranque
+(Hostinger reinicia el servidor al publicar y puede arrancar dos procesos casi juntos).
+El `ALTER TABLE alerts ADD COLUMN open_flag` ya se había aplicado, pero la migración no
+quedó registrada en `schema_migrations`. Cada arranque posterior reintentaba el mismo
+`ALTER` y fallaba con `Duplicate column name 'open_flag'`; como el backend no arranca si
+una migración falla, **el sitio quedó caído** hasta publicar el arreglo.
+
+**Causa raíz:** (1) la migración no era repetible, (2) nada impedía que dos procesos
+migraran a la vez, (3) no se probó el caso "migración interrumpida", y las pruebas de
+despliegue solo cubrieron base vacía y base con datos, no un reinicio a mitad.
+
+**Arreglo:**
+- La 021 usa `ALTER` condicionales (consulta `information_schema` y `PREPARE`), por lo
+  que se puede ejecutar de nuevo sobre una base a medias o completa.
+- `runMigrations` toma un candado `GET_LOCK('coop:migrations')`: con dos procesos
+  simultáneos uno migra y el otro espera y luego ve todo aplicado.
+- Regla nueva en `CLAUDE.md`: las migraciones deben ser repetibles.
+
+**Verificado localmente:** (A) base con 020 aplicada y 021 a medias → se completa;
+(B) 021 ejecutada dos veces seguidas → sin error; (C) dos procesos migrando a la vez
+sobre una base vacía → uno aplicó las 21, el otro 0, sin errores.
+
+**Pendiente de mejora:** el arranque del backend sigue dependiendo de que las migraciones
+terminen. Si se quiere que una migración fallida no tumbe el sitio, habría que arrancar
+igualmente y marcar `/health` como degradado; se decidió no hacerlo todavía porque
+arrancar con un esquema desactualizado puede dar errores peores.
+
 ## 4. Cómo verificar
 
 Pruebas automáticas (carpeta `backend/src`). Las que necesitan base de datos son
@@ -285,5 +314,6 @@ Evitar también `SELECT *` en listados (arrastra columnas JSON de auditoría y s
 
 | Fecha | Cambio |
 |---|---|
+| 2026-10-12 | Incidente: la migración 021 quedó a medias y el sitio cayó; migraciones repetibles + candado entre procesos (§3.9). |
 | 2026-10-12 | Bloque 2: job de alertas por lotes (18× más rápido, mismo resultado), exclusión mutua y ejecución diaria única (`job_runs`, `GET_LOCK`), alertas únicas (`open_flag`), SSE entre procesos con latido y topes, pool con cola limitada, `/health` real, `no-store` en la API, apagado ordenado. Migración 021. |
 | 2026-10-12 | Diagnóstico inicial. Corregidos #1–#6 (§3). Migración 020. `AUTH_RATE_LIMIT`. Refresh con token inválido: 500 → 401. |

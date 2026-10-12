@@ -810,7 +810,17 @@ CREATE TABLE IF NOT EXISTS realtime_events (
   KEY idx_realtime_events_created_at (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-ALTER TABLE alerts ADD COLUMN open_flag TINYINT NULL DEFAULT NULL;
+-- Los ALTER son condicionales: si esta migración se interrumpió a medias (p. ej. el
+-- proceso se reinició durante el arranque), volver a ejecutarla no falla con
+-- "Duplicate column name" ni "Duplicate key name".
+SET @ddl = IF(
+  (SELECT COUNT(*) FROM information_schema.COLUMNS
+   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'alerts' AND COLUMN_NAME = 'open_flag') = 0,
+  'ALTER TABLE alerts ADD COLUMN open_flag TINYINT NULL DEFAULT NULL',
+  'SELECT 1');
+PREPARE ddl_stmt FROM @ddl;
+EXECUTE ddl_stmt;
+DEALLOCATE PREPARE ddl_stmt;
 
 UPDATE alerts SET open_flag = 1 WHERE status = 'ABIERTA';
 
@@ -827,7 +837,14 @@ JOIN (
 SET a.open_flag = NULL, a.status = 'DESCARTADA', a.resolved_at = NOW()
 WHERE a.open_flag = 1 AND a.id <> d.keep_id;
 
-ALTER TABLE alerts ADD UNIQUE KEY uq_alerts_open (installment_id, type, open_flag);
+SET @ddl = IF(
+  (SELECT COUNT(*) FROM information_schema.STATISTICS
+   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'alerts' AND INDEX_NAME = 'uq_alerts_open') = 0,
+  'ALTER TABLE alerts ADD UNIQUE KEY uq_alerts_open (installment_id, type, open_flag)',
+  'SELECT 1');
+PREPARE ddl_stmt FROM @ddl;
+EXECUTE ddl_stmt;
+DEALLOCATE PREPARE ddl_stmt;
 
 -- ============================================================
 -- Registro de migraciones aplicadas (mismas columnas que usa el runner de

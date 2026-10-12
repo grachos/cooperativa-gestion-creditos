@@ -10,6 +10,13 @@ Todo cambio relevante se documenta **en el mismo commit** que el código:
 - Cambios de esquema → nueva migración en `backend/src/db/mysql/migrations/` con un
   comentario que explique el porqué, y regenerar `schema_completo.sql`
   (`npm run db:mysql:build`).
+  **Las migraciones deben ser repetibles** (idempotentes): `CREATE TABLE IF NOT EXISTS`,
+  y los `ALTER ... ADD COLUMN/KEY` condicionales (consultando `information_schema` con
+  `PREPARE`, ver `021_multiprocess_guards.sql`). Motivo: el DDL de MySQL no es
+  transaccional y un reinicio a mitad de arranque deja la migración aplicada a medias;
+  si no es repetible, TODOS los arranques posteriores fallan y el sitio queda caído
+  (incidente del 2026-10-12, ver `docs/escalabilidad.md` §3.9). Probar siempre el caso
+  "migración interrumpida" antes de subir.
 
 La documentación explica el **porqué** (el problema medido o confirmado), qué se
 hizo, cómo verificarlo y qué queda pendiente. Si algo no se pudo probar, se dice.

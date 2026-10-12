@@ -19,6 +19,16 @@ export async function runMigrations() {
     multipleStatements: true
   });
 
+  // Un solo proceso migra a la vez. Hostinger puede arrancar dos procesos casi juntos (o
+  // reiniciar uno a mitad de arranque): sin este candado ambos intentaban aplicar la misma
+  // migración y el segundo fallaba. GET_LOCK espera (hasta 120 s) y, al obtenerlo, vuelve a
+  // leer qué migraciones ya están aplicadas.
+  const [lockRows] = await conn.query("SELECT GET_LOCK('coop:migrations', 120) AS got");
+  if (Number((lockRows as any[])[0].got) !== 1) {
+    throw new Error("No se pudo obtener el candado de migraciones (otro proceso está migrando)");
+  }
+
+  try {
   await conn.query(
     `CREATE TABLE IF NOT EXISTS schema_migrations (
       name VARCHAR(160) PRIMARY KEY,
@@ -64,7 +74,10 @@ export async function runMigrations() {
   }
 
   console.log("Migraciones completadas.");
-  await conn.end();
+  } finally {
+    await conn.query("SELECT RELEASE_LOCK('coop:migrations')").catch(() => undefined);
+    await conn.end();
+  }
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
