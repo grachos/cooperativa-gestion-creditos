@@ -38,7 +38,7 @@ app.get("/health", (_req, res) => res.json({ status: "ok" }));
 // correo de restablecimiento.
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 40,
+  limit: env.AUTH_RATE_LIMIT,
   standardHeaders: "draft-7",
   legacyHeaders: false,
   message: { error: "Demasiadas solicitudes. Intenta de nuevo en unos minutos." }

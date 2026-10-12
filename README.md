@@ -455,3 +455,19 @@ cd backend  && npm test                       # núcleo + store en memoria
 IDEMPOTENCY_TEST_DB=1 DB_HOST=127.0.0.1 DB_USER=… DB_PASSWORD=… DB_NAME=… npm test   # también contra MySQL real
 cd frontend && npm test
 ```
+
+## Escalabilidad y concurrencia
+
+Diagnóstico de escalabilidad, cambios realizados, mediciones y pendientes:
+[`docs/escalabilidad.md`](docs/escalabilidad.md). Resumen de lo ya aplicado:
+
+- **Operaciones de dinero con bloqueo de filas** (`SELECT … FOR UPDATE`): pagos,
+  reversos, desembolsos y refinanciaciones simultáneas ya no pierden abonos, ni se
+  aplican dos veces, ni fallan por deadlock. Número de crédito atómico (`sequences`).
+  Migración `020_concurrency_guards.sql`.
+- **Hash de contraseñas sin bloquear el servidor**: `bcrypt` nativo (con respaldo
+  automático a `bcryptjs`) y SHA-256 para refresh tokens y tokens de restablecimiento.
+  Con 30 logins simultáneos el tiempo total pasó de 5,3 s a 0,7 s.
+- Variables: `AUTH_RATE_LIMIT` (ver `backend/.env.example`).
+- Pruebas: `cd backend && npm test` (las que usan base de datos son opcionales; ver
+  el documento de escalabilidad, sección 4).

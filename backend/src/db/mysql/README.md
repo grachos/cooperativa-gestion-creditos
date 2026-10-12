@@ -11,9 +11,9 @@ la aplicación aún no arranca contra MySQL.
 
 | Archivo | Para qué sirve |
 |---|---|
-| `schema_completo.sql` | Las 18 migraciones juntas, listas para importar de una vez (27 tablas). **Es el que se usa en Hostinger.** |
+| `schema_completo.sql` | Las 20 migraciones juntas, listas para importar de una vez (30 tablas). **Es el que se usa en Hostinger.** |
 | `seed_base.sql` | Datos mínimos para que la app funcione: 5 roles, 13 permisos y los 8 parámetros del sistema. Sin usuarios ni datos de demostración. |
-| `migrations/001…018_*.sql` | Las mismas migraciones por separado, con la misma numeración que las de Postgres (`../migrations`). |
+| `migrations/001…020_*.sql` | Las mismas migraciones por separado, con la misma numeración que las de Postgres (`../migrations`). |
 | `build-schema.mjs` | Genera `schema_completo.sql` a partir de `migrations/`. |
 
 Las migraciones 012 y 014 no hacen nada en MySQL (`DO 0;`) y lo explican en un

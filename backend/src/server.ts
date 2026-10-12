@@ -2,6 +2,7 @@ import { app } from "./app.js";
 import { env } from "./config/env.js";
 import { runMigrations } from "./db/migrate.js";
 import { idempotencyStore } from "./middlewares/idempotent.js";
+import { passwordImplementationName } from "./utils/password.js";
 import { recalculateAlerts } from "./modules/alerts/alerts.service.js";
 
 // Sin top-level await: el hosting carga este archivo con require().
@@ -10,8 +11,9 @@ const ready = env.AUTO_MIGRATE ? runMigrations() : Promise.resolve();
 ready
   .then(() => {
     app.listen(env.PORT, () => {
-      console.log(`Backend cooperativa escuchando en puerto ${env.PORT}`);
+      console.log(`Backend cooperativa escuchando en puerto ${env.PORT} (pid ${process.pid})`);
     });
+    void passwordImplementationName().then((name) => console.log(`[password] hash de contraseñas: ${name}`));
   })
   .catch((err) => {
     console.error("No se pudo iniciar el backend", err);

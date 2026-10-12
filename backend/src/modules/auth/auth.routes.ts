@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { Router } from "express";
-import bcrypt from "bcryptjs";
+import { hashPassword, verifyPassword } from "../../utils/password.js";
+import { hashToken, verifyToken } from "../../utils/tokenHash.js";
 import { pool } from "../../db/pool.js";
 import { env } from "../../config/env.js";
 import { forgotPasswordSchema, loginSchema, resetPasswordSchema } from "../../shared/schemas.js";
@@ -76,7 +77,7 @@ authRouter.post(
       );
     }
 
-    const valid = await bcrypt.compare(password, dbUser.password_hash);
+    const valid = await verifyPassword(password, dbUser.password_hash);
     if (!valid) {
       await pool.query(
         `INSERT INTO login_activity (user_id, event_type, ip_address) VALUES (?, 'LOGIN_FAILED', ?)`,
@@ -97,7 +98,7 @@ authRouter.post(
       permissions: access.permissions
     });
     const refreshToken = signRefreshToken(dbUser.id);
-    const refreshHash = await bcrypt.hash(refreshToken, 10);
+    const refreshHash = hashToken(refreshToken);
 
     await pool.query(`UPDATE users SET refresh_token_hash = ? WHERE id = ?`, [refreshHash, dbUser.id]);
     await pool.query(
@@ -146,7 +147,7 @@ authRouter.post(
     // evita que alguien use este endpoint para averiguar qué cuentas existen.
     if (dbUser && underLimit) {
       const rawToken = crypto.randomBytes(32).toString("hex");
-      const tokenHash = await bcrypt.hash(rawToken, 10);
+      const tokenHash = hashToken(rawToken);
       const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS);
 
       await pool.query(
@@ -186,14 +187,14 @@ authRouter.post(
 
     let matchedTokenId: number | null = null;
     for (const row of rows as any[]) {
-      if (await bcrypt.compare(token, row.token_hash)) {
+      if ((await verifyToken(token, row.token_hash)).ok) {
         matchedTokenId = row.id;
         break;
       }
     }
     if (!matchedTokenId) throw new HttpError(400, "El enlace de restablecimiento es inválido o venció");
 
-    const passwordHash = await bcrypt.hash(newPassword, 10);
+    const passwordHash = await hashPassword(newPassword);
     await pool.query(`UPDATE users SET password_hash = ?, refresh_token_hash = NULL WHERE id = ?`, [
       passwordHash,
       uid
@@ -210,15 +211,25 @@ authRouter.post(
     const refreshToken = req.body?.refreshToken as string | undefined;
     if (!refreshToken) throw new HttpError(400, "refreshToken requerido");
 
-    const decoded = verifyRefreshToken(refreshToken);
+    // Un token manipulado, mal formado o vencido es un 401, no un error interno.
+    let decoded: { sub: number };
+    try {
+      decoded = verifyRefreshToken(refreshToken);
+    } catch {
+      throw new HttpError(401, "Sesión inválida");
+    }
     const [rows] = await pool.query<any[]>(`SELECT * FROM users WHERE id = ? AND status = 'ACTIVO'`, [
       decoded.sub
     ]);
     const dbUser = (rows as any[])[0];
     if (!dbUser?.refresh_token_hash) throw new HttpError(401, "Sesión inválida");
 
-    const matches = await bcrypt.compare(refreshToken, dbUser.refresh_token_hash);
-    if (!matches) throw new HttpError(401, "Sesión inválida");
+    const check = await verifyToken(refreshToken, dbUser.refresh_token_hash);
+    if (!check.ok) throw new HttpError(401, "Sesión inválida");
+    // Sesión creada antes del cambio a SHA-256 (hash bcrypt): se migra en el acto.
+    if (check.legacy) {
+      await pool.query(`UPDATE users SET refresh_token_hash = ? WHERE id = ?`, [hashToken(refreshToken), dbUser.id]);
+    }
 
     const access = await loadUserWithAccess(dbUser.id);
     if (!access || access.permissions.length === 0) throw new HttpError(401, "Sesión inválida");

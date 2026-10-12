@@ -1,4 +1,4 @@
-import bcrypt from "bcryptjs";
+import { hashPassword } from "../utils/password.js";
 import { pool } from "./pool.js";
 import { buildAmortizationSchedule } from "../modules/credits/schedule.service.js";
 import { DEFAULT_DELINQUENCY_POLICY, MORA_BUCKETS } from "../modules/delinquency/delinquency.service.js";
@@ -72,7 +72,7 @@ async function upsertRolesAndPermissions() {
 
 async function upsertUser(email: string, username: string, fullName: string, roleId: number | undefined) {
   if (roleId === undefined) throw new Error(`Rol no encontrado para el usuario ${email}`);
-  const passwordHash = await bcrypt.hash("Demo1234*", 10);
+  const passwordHash = await hashPassword("Demo1234*");
   await pool.query(
     `INSERT INTO users (email, username, password_hash, full_name)
      VALUES (?, ?, ?, ?)

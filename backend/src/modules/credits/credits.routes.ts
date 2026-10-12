@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { pool, withTransaction } from "../../db/pool.js";
+import { pool, withTransaction, type PoolConnection } from "../../db/pool.js";
 import { disbursementSchema, refinanceSchema, idParam, paginationQuery } from "../../shared/schemas.js";
 import { asyncHandler, HttpError } from "../../middlewares/error.middleware.js";
 import { requireAuth, requirePermission } from "../../middlewares/auth.middleware.js";
@@ -14,13 +14,22 @@ import { idempotent } from "../../middlewares/idempotent.js";
 export const creditsRouter = Router();
 creditsRouter.use(requireAuth);
 
-async function nextCreditNumber(): Promise<string> {
+/**
+ * Siguiente número de crédito (CR-AAAA-NNNNN) con un contador atómico en la
+ * tabla `sequences`. DEBE llamarse dentro de la transacción del desembolso: la
+ * fila del contador queda bloqueada hasta el commit, así que dos desembolsos
+ * simultáneos reciben números distintos y consecutivos, y un rollback no
+ * consume el número. (Antes: COUNT(*)+1, que se repetía bajo concurrencia.)
+ */
+async function nextCreditNumber(conn: PoolConnection): Promise<string> {
   const year = new Date().getFullYear();
-  const [rows] = await pool.query<any[]>(
-    `SELECT COUNT(*) as total FROM credits WHERE credit_number LIKE ?`,
-    [`CR-${year}-%`]
+  await conn.query(
+    `INSERT INTO sequences (name, value) VALUES (?, LAST_INSERT_ID(1))
+     ON DUPLICATE KEY UPDATE value = LAST_INSERT_ID(value + 1)`,
+    [`credit_number:${year}`]
   );
-  const seq = (rows as any[])[0].total + 1;
+  const [rows] = await conn.query<any[]>(`SELECT LAST_INSERT_ID() AS seq`);
+  const seq = Number((rows as any[])[0].seq);
   return `CR-${year}-${String(seq).padStart(5, "0")}`;
 }
 
@@ -34,12 +43,14 @@ creditsRouter.post(
       disbursementSchema.parse(req.body);
 
     const credit = await withTransaction(async (conn) => {
-      const [rows] = await conn.query<any[]>(`SELECT * FROM credit_applications WHERE id = ?`, [id]);
+      // Bloqueo de la solicitud (PRIMERA sentencia de la transacción): un segundo
+      // desembolso simultáneo espera aquí, y al entrar ya la ve DESEMBOLSADA.
+      const [rows] = await conn.query<any[]>(`SELECT * FROM credit_applications WHERE id = ? FOR UPDATE`, [id]);
       const app = (rows as any[])[0];
       if (!app) throw new HttpError(404, "Solicitud no encontrada");
       if (app.status !== "APROBADA") throw new HttpError(409, "La solicitud debe estar aprobada para desembolsar");
 
-      const creditNumber = await nextCreditNumber();
+      const creditNumber = await nextCreditNumber(conn);
       const delinquencyPolicy = await loadDelinquencyPolicy(conn);
 
       const [result] = await conn.query<any>(
@@ -68,6 +79,18 @@ creditsRouter.post(
         ]
       );
       const creditId = result.insertId;
+
+      // Red de seguridad en la base de datos: una solicitud solo puede
+      // desembolsarse una vez (llave primaria de application_disbursements).
+      try {
+        await conn.query(`INSERT INTO application_disbursements (credit_application_id, credit_id) VALUES (?, ?)`, [
+          id,
+          creditId
+        ]);
+      } catch (err: any) {
+        if (err?.errno === 1062) throw new HttpError(409, "La solicitud ya fue desembolsada");
+        throw err;
+      }
 
       await conn.query(
         `UPDATE credit_participants SET credit_id = ? WHERE credit_application_id = ?`,
@@ -251,7 +274,9 @@ creditsRouter.post(
       );
 
       const result = await withTransaction(async (conn) => {
-        const [rows] = await conn.query<any[]>(`SELECT * FROM credits WHERE id = ?`, [id]);
+        // Bloqueo del crédito (PRIMERA sentencia): dos refinanciaciones simultáneas
+        // del mismo crédito se serializan; la segunda lo ve ya REFINANCIADO.
+        const [rows] = await conn.query<any[]>(`SELECT * FROM credits WHERE id = ? FOR UPDATE`, [id]);
         const oldCredit = (rows as any[])[0];
         if (!oldCredit) throw new HttpError(404, "Crédito no encontrado");
         if (!["VIGENTE", "EN_MORA"].includes(oldCredit.status)) {
@@ -273,7 +298,7 @@ creditsRouter.post(
           [id]
         );
 
-        const creditNumber = await nextCreditNumber();
+        const creditNumber = await nextCreditNumber(conn);
         const refinanceDisbursementDate = new Date().toISOString().slice(0, 10);
         const [insertResult] = await conn.query<any>(
           `INSERT INTO credits

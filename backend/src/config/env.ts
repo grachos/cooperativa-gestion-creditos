@@ -64,6 +64,10 @@ const envSchema = z
     // de recibir 409 IDEMPOTENCY_IN_PROGRESS.
     IDEMPOTENCY_TTL_HOURS: z.coerce.number().positive().max(24 * 30).default(24),
     IDEMPOTENCY_WAIT_MS: z.coerce.number().int().min(0).max(60000).default(8000),
+    // Límite de peticiones de autenticación por IP cada 15 min (login,
+    // forgot-password, reset-password). Súbalo SOLO en un entorno de pruebas de
+    // carga; en producción deje el valor por defecto.
+    AUTH_RATE_LIMIT: z.coerce.number().int().positive().default(40),
     CRON_SECRET: z.string().min(16).optional()
   })
   ;

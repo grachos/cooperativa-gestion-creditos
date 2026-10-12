@@ -1,5 +1,5 @@
 import { Router } from "express";
-import bcrypt from "bcryptjs";
+import { hashPassword } from "../../utils/password.js";
 import { pool, withTransaction } from "../../db/pool.js";
 import { requireAuth, requirePermission } from "../../middlewares/auth.middleware.js";
 import { asyncHandler, HttpError } from "../../middlewares/error.middleware.js";
@@ -39,7 +39,7 @@ usersRouter.post(
       throw new HttpError(409, "Ya existe un usuario con ese correo o usuario");
     }
 
-    const passwordHash = await bcrypt.hash(data.password, 10);
+    const passwordHash = await hashPassword(data.password);
 
     const userId = await withTransaction(async (conn) => {
       const [result] = await conn.query<any>(
@@ -142,7 +142,7 @@ usersRouter.patch(
         await conn.query(`UPDATE users SET email = ? WHERE id = ?`, [data.email, id]);
       }
       if (data.password) {
-        const passwordHash = await bcrypt.hash(data.password, 10);
+        const passwordHash = await hashPassword(data.password);
         await conn.query(`UPDATE users SET password_hash = ?, refresh_token_hash = NULL WHERE id = ?`, [
           passwordHash,
           id

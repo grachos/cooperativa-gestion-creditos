@@ -20,7 +20,12 @@ paymentsRouter.post(
     const data = paymentSchema.parse(req.body);
 
     const result = await withTransaction(async (conn) => {
-      const [creditRows] = await conn.query<any[]>(`SELECT * FROM credits WHERE id = ?`, [data.creditId]);
+      // Bloqueo del crédito (PRIMERA sentencia de la transacción): los pagos al
+      // mismo crédito se aplican de a uno. Sin esto, dos pagos simultáneos leían
+      // las mismas cuotas y el último en escribir pisaba al otro (abonos
+      // perdidos o duplicados) o chocaban en un deadlock (500). La lectura de
+      // las cuotas ocurre DESPUÉS del bloqueo, así que ve el pago anterior.
+      const [creditRows] = await conn.query<any[]>(`SELECT * FROM credits WHERE id = ? FOR UPDATE`, [data.creditId]);
       const credit = (creditRows as any[])[0];
       if (!credit) throw new HttpError(404, "Crédito no encontrado");
       if (credit.status === "PAGADO" || credit.status === "ANULADO") {
@@ -103,8 +108,17 @@ paymentsRouter.post(
     const { id } = idParam.parse(req.params);
     const { reason } = reversalSchema.parse(req.body);
 
+    // Se averigua el crédito FUERA de la transacción para poder bloquearlo como
+    // PRIMERA sentencia (mismo orden que al registrar un pago: crédito, luego
+    // pago; así no hay deadlocks, y las lecturas posteriores ven los cambios
+    // de cualquier pago/reverso que terminó antes).
+    const [pre] = await pool.query<any[]>(`SELECT credit_id FROM payments WHERE id = ?`, [id]);
+    const creditId = (pre as any[])[0]?.credit_id;
+    if (!creditId) throw new HttpError(404, "Pago no encontrado");
+
     await withTransaction(async (conn) => {
-      const [rows] = await conn.query<any[]>(`SELECT * FROM payments WHERE id = ?`, [id]);
+      await conn.query(`SELECT id FROM credits WHERE id = ? FOR UPDATE`, [creditId]);
+      const [rows] = await conn.query<any[]>(`SELECT * FROM payments WHERE id = ? FOR UPDATE`, [id]);
       const payment = (rows as any[])[0];
       if (!payment) throw new HttpError(404, "Pago no encontrado");
       if (payment.status === "REVERSADO") throw new HttpError(409, "El pago ya fue reversado");
