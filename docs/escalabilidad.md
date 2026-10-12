@@ -262,7 +262,7 @@ el binario nativo no se pudo cargar (la app funciona igual, pero más lento bajo
 ## 5. Información que falta (obtenerla antes de dimensionar)
 
 1. **Usuarios reales esperados:** ¿solo funcionarios o también un portal de asociados? ¿concurrencia y pico (cierre de mes, fechas de pago)?
-2. **Cuántos procesos Node hay (clave para #7):** abra `https://coomulnissi.cc/health` unas 10 veces: si el campo `instance` cambia entre respuestas, hay varios procesos; si siempre es el mismo, hay uno. Los logs de arranque también muestran `pid` e `instancia`. Si hay uno solo, la parte de varios procesos de §3.5–3.7 queda como protección preventiva sin costo.
+2. **Cuántos procesos Node hay (clave para #7). Evidencia ya obtenida (2026-10-12):** los registros de Hostinger muestran que el servidor se **arranca bajo demanda y se detiene al quedar ocioso**: tras un despliegue aparecen varios arranques en segundos y un `SIGTERM` (el apagado ordenado ahora lo registra: `[server] SIGTERM: apagando`) unos segundos después, y minutos más tarde un arranque nuevo cuando llegó una petición. Es decir, los "dos arranques por despliegue" son ciclo de vida del hosting, no necesariamente dos procesos simultáneos; y **la app no está siempre viva**. Falta confirmar si alguna vez coexisten dos procesos: abra `https://coomulnissi.cc/health` unas 10 veces: si el campo `instance` cambia entre respuestas, hay varios procesos; si siempre es el mismo, hay uno. Los logs de arranque también muestran `pid` e `instancia`. Si hay uno solo, la parte de varios procesos de §3.5–3.7 queda como protección preventiva sin costo.
 2b. **Límites del plan de Hostinger:** hPanel → Avanzado → Uso de recursos (CPU, RAM, procesos). Preguntar a soporte cuántas instancias de Node arranca lsnode y si las conexiones largas (SSE) tienen tiempo límite. Pista: los logs muestran **dos** arranques por despliegue, con `pid` e `instancia` distintos.
 3. **Límites de MySQL (para fijar `DB_POOL_SIZE`: procesos × tamaño del pool ≤ `max_user_connections`):** `SHOW VARIABLES WHERE Variable_name IN ('max_user_connections','max_connections','wait_timeout','innodb_buffer_pool_size'); SELECT VERSION();`
 4. **Volumen por tabla:** `SELECT table_name, table_rows, ROUND((data_length+index_length)/1048576,1) AS mb FROM information_schema.tables WHERE table_schema = DATABASE() ORDER BY mb DESC;`
@@ -303,6 +303,10 @@ Evitar también `SELECT *` en listados (arrastra columnas JSON de auditoría y s
 - **Aprobación:** p95 lecturas < 500 ms, escrituras < 1 s, p99 < 2 s, 5xx < 0,5 %; cero saldos inconsistentes y cero créditos duplicados.
 
 ## 9. Orden de trabajo restante
+
+0. **Job diario de alertas: no depender del proceso (acción de operación, pendiente).** Como Hostinger detiene la app cuando está ociosa, el temporizador interno (`INTERNAL_CRON`, que revisa cada 10 min si son las 11:00 UTC) **solo corre si el proceso está vivo a esa hora**. Si nadie usa el sistema entre las 06:00 y las 07:00 (hora de Colombia), el job de ese día no se ejecuta. Solución: crear en hPanel → Avanzado → Cron Jobs una tarea diaria a las 11:00 UTC (06:00 Colombia) que llame al endpoint ya existente, que también despierta a la app:
+   `curl -fsS -H "Authorization: Bearer <CRON_SECRET>" https://coomulnissi.cc/api/v1/alerts/cron`
+   (`CRON_SECRET` es la variable de entorno ya configurada en Hostinger; no se guarda en el repositorio.) El endpoint usa el mismo candado, así que es seguro aunque coincida con el temporizador interno o con el botón "Recalcular". Hasta que se configure, las alertas se actualizan al pulsar "Recalcular" o si el sistema está en uso a esa hora.
 
 1. Confirmar cuántos procesos hay y los límites de conexión (§5) y fijar `DB_POOL_SIZE`; rate limit compartido entre procesos (hoy el límite de autenticación es por proceso: con N procesos el límite real es N × `AUTH_RATE_LIMIT`).
 2. Índices de §6 validados con EXPLAIN; quitar `SELECT *`.
