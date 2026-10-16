@@ -31,50 +31,82 @@ applicationsRouter.get(
   asyncHandler(async (req, res) => {
     const { page, pageSize } = paginationQuery.parse(req.query);
     const status = req.query.status as string | undefined;
+    const search = (req.query.search as string | undefined)?.trim().slice(0, 80);
     const offset = (page - 1) * pageSize;
-    const where = status ? `WHERE ca.status = ?` : "";
-    const countWhere = status ? `WHERE status = ?` : "";
-    const args = status ? [status] : [];
+
+    // Búsqueda por cédula/NIT (prefijo), nombre del titular, razón social o número de solicitud.
+    const conditions: string[] = [];
+    const args: unknown[] = [];
+    if (status) {
+      conditions.push(`ca.status = ?`);
+      args.push(status);
+    }
+    if (search) {
+      conditions.push(
+        `(a.id_number LIKE ? OR CONCAT(a.first_name, ' ', a.last_name) LIKE ? OR s.legal_name LIKE ? OR s.tax_id_number LIKE ? OR ca.id = ?)`
+      );
+      args.push(`${search}%`, `%${search}%`, `%${search}%`, `${search}%`, /^\d+$/.test(search) ? Number(search) : 0);
+    }
+    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+    const fromJoin = `FROM credit_applications ca
+       LEFT JOIN associates a ON a.id = ca.titular_associate_id
+       LEFT JOIN societies s ON s.id = ca.titular_society_id`;
 
     const [rows] = await pool.query<any[]>(
-      `SELECT ca.*, a.first_name, a.last_name, s.legal_name
-       FROM credit_applications ca
-       LEFT JOIN associates a ON a.id = ca.titular_associate_id
-       LEFT JOIN societies s ON s.id = ca.titular_society_id
+      `SELECT ca.*, a.first_name, a.last_name, a.id_number, s.legal_name
+       ${fromJoin}
        ${where} ORDER BY ca.created_at DESC LIMIT ? OFFSET ?`,
       [...args, pageSize, offset]
     );
-    const [countRows] = await pool.query<any[]>(
-      `SELECT COUNT(*) as total FROM credit_applications ${countWhere}`,
-      args
-    );
+    const [countRows] = await pool.query<any[]>(`SELECT COUNT(*) as total ${fromJoin} ${where}`, args);
     res.json({ data: rows, page, pageSize, total: (countRows as any[])[0].total });
   })
 );
 
 /**
- * Crea (si faltan) una fila PENDIENTE por cada tipo de documento listado en
- * el parámetro `documentos_requeridos`, para que la solicitud siempre
- * refleje la lista vigente de documentos a verificar, incluso si el
- * parámetro cambió después de radicada la solicitud.
+ * Crea (si faltan) una fila PENDIENTE por cada documento que se exige a cada
+ * participante: los de `documentos_requeridos_titular` para el titular y los de
+ * `documentos_requeridos_codeudor` para cada codeudor. Así la solicitud siempre
+ * refleja la lista vigente, incluso si el parámetro cambió después de radicarla.
+ *
+ * Las solicitudes anteriores a este cambio tienen documentos "de la solicitud"
+ * (sin participante) de la lista única `documentos_requeridos`: se dejan como
+ * están, sin mezclar ambos modelos.
  */
 async function ensureRequiredDocuments(applicationId: number) {
-  const [paramRows] = await pool.query<any[]>(`SELECT value FROM parameters WHERE \`key\` = 'documentos_requeridos'`);
-  const requiredTypes: string[] = (paramRows as any[])[0]?.value ?? [];
-  if (requiredTypes.length === 0) return;
-
-  const [existingRows] = await pool.query<any[]>(
-    `SELECT document_type FROM credit_application_documents WHERE credit_application_id = ?`,
+  const [legacy] = await pool.query<any[]>(
+    `SELECT 1 FROM credit_application_documents WHERE credit_application_id = ? AND credit_participant_id IS NULL LIMIT 1`,
     [applicationId]
   );
-  const existing = new Set((existingRows as any[]).map((r) => r.document_type));
+  if ((legacy as any[]).length > 0) return;
 
-  for (const documentType of requiredTypes) {
-    if (existing.has(documentType)) continue;
-    await pool.query(
-      `INSERT INTO credit_application_documents (credit_application_id, document_type) VALUES (?, ?)`,
-      [applicationId, documentType]
-    );
+  const [paramRows] = await pool.query<any[]>(
+    `SELECT \`key\`, value FROM parameters
+     WHERE \`key\` IN ('documentos_requeridos_titular', 'documentos_requeridos_codeudor', 'documentos_requeridos')`
+  );
+  const params = new Map((paramRows as any[]).map((r) => [r.key as string, r.value]));
+  const listFor = (key: string): string[] => {
+    const v = params.get(key) ?? params.get("documentos_requeridos");
+    return Array.isArray(v) ? v.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim()) : [];
+  };
+  const byRole: Record<string, string[]> = {
+    TITULAR: listFor("documentos_requeridos_titular"),
+    CODEUDOR: listFor("documentos_requeridos_codeudor")
+  };
+
+  const [participants] = await pool.query<any[]>(
+    `SELECT id, role FROM credit_participants WHERE credit_application_id = ?`,
+    [applicationId]
+  );
+  for (const participant of participants as any[]) {
+    for (const documentType of byRole[participant.role] ?? []) {
+      // La llave única (solicitud, participante, documento) evita duplicados si dos peticiones coinciden.
+      await pool.query(
+        `INSERT IGNORE INTO credit_application_documents (credit_application_id, credit_participant_id, document_type)
+         VALUES (?, ?, ?)`,
+        [applicationId, participant.id, documentType]
+      );
+    }
   }
 }
 
@@ -279,7 +311,9 @@ applicationsRouter.post(
 
     await ensureRequiredDocuments(id);
     const [pendingDocs] = await pool.query<any[]>(
-      `SELECT document_type FROM credit_application_documents WHERE credit_application_id = ? AND status != 'APROBADO'`,
+      `SELECT d.document_type, cp.role FROM credit_application_documents d
+       LEFT JOIN credit_participants cp ON cp.id = d.credit_participant_id
+       WHERE d.credit_application_id = ? AND d.status != 'APROBADO'`,
       [id]
     );
     const [pendingParticipants] = await pool.query<any[]>(
@@ -288,7 +322,7 @@ applicationsRouter.post(
     );
     if ((pendingDocs as any[]).length > 0 || (pendingParticipants as any[]).length > 0) {
       const missing = [
-        ...(pendingDocs as any[]).map((d) => `documento "${d.document_type}"`),
+        ...(pendingDocs as any[]).map((d) => `documento "${d.document_type}"${d.role ? ` (${d.role})` : ""}`),
         ...(pendingParticipants as any[]).map((p) => `participante (${p.role})`)
       ];
       throw new HttpError(409, `Faltan por aprobar: ${missing.join(", ")}`);

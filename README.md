@@ -456,6 +456,30 @@ IDEMPOTENCY_TEST_DB=1 DB_HOST=127.0.0.1 DB_USER=… DB_PASSWORD=… DB_NAME=… 
 cd frontend && npm test
 ```
 
+## Cambios de la reunión con la cooperativa (2026-10-16) — Fase 1
+
+Plan completo en `docs/plan-reunion-2026-10-16.md`. Migración `023_reunion_fase1.sql`.
+
+- **Búsqueda y paginación:** Asociados, Solicitudes y Créditos tienen buscador (con espera de 350 ms) y
+  botones Anterior/Siguiente. `GET /applications?search=` busca por cédula/NIT (prefijo), nombre del titular,
+  razón social o número de solicitud; `GET /credits?search=` por número de crédito, cédula/NIT, nombre o razón
+  social. Ambos aceptan `page`/`pageSize` y devuelven `total` del resultado filtrado.
+- **Documentos por participante:** los parámetros `documentos_requeridos_titular` y
+  `documentos_requeridos_codeudor` (editables en Parámetros) definen qué se revisa al titular y a cada
+  codeudor. La solicitud muestra una tarjeta por participante con sus documentos; no se puede aprobar mientras
+  quede alguno sin aprobar (el error indica de qué participante). Las solicitudes anteriores conservan su lista
+  única (`documentos_requeridos`, ahora solo respaldo). Todos los documentos listados son obligatorios: para
+  hacer uno opcional se quita de la lista.
+- **Compromisos de pago:** campo `observation` (hasta 500 caracteres), aparte de la nota del compromiso.
+- **Pago verificado:** `POST /payments` acepta `verified` (verificado en banco y soporte archivado);
+  `PUT /payments/:id/verified` lo marca o desmarca después. Se guarda quién y cuándo y se muestra en los pagos
+  del crédito. No se suben archivos.
+- **Desembolso:** `POST /credits/applications/:id/disburse` acepta `disbursementToAccount` (cuenta del
+  asociado), `disbursementFromAccount` (cuenta de la cooperativa; lista en el parámetro
+  `cuentas_bancarias_cooperativa`) y `disbursementProofFiled`. La fecha de desembolso ya existía.
+
+Pendiente de la Fase 1: mostrar la marca de verificación también dentro del cronograma de cuotas.
+
 ## Escalabilidad y concurrencia
 
 Diagnóstico de escalabilidad, cambios realizados, mediciones y pendientes:

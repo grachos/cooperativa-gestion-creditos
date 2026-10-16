@@ -21,22 +21,22 @@ collectionsRouter.post(
   idempotent("credits.promise"),
   asyncHandler(async (req, res) => {
     const { id } = idParam.parse(req.params);
-    const { promiseDate, description } = promiseSchema.parse(req.body);
+    const { promiseDate, description, observation } = promiseSchema.parse(req.body);
 
     const [creditRows] = await pool.query<any[]>(`SELECT id FROM credits WHERE id = ?`, [id]);
     if ((creditRows as any[]).length === 0) throw new HttpError(404, "Crédito no encontrado");
 
     const [result] = await pool.query<any>(
-      `INSERT INTO collection_actions (credit_id, action_type, description, promise_date, promise_status, created_by)
-       VALUES (?, 'GESTION_COBRO', ?, ?, 'PENDIENTE', ?)`,
-      [id, description ?? "Compromiso de pago", promiseDate, req.user!.id]
+      `INSERT INTO collection_actions (credit_id, action_type, description, observation, promise_date, promise_status, created_by)
+       VALUES (?, 'GESTION_COBRO', ?, ?, ?, 'PENDIENTE', ?)`,
+      [id, description ?? "Compromiso de pago", observation || null, promiseDate, req.user!.id]
     );
 
     await recordAudit(pool, {
       entity: "collection_action",
       entityId: result.insertId,
       action: "PROMISE_CREATED",
-      newValue: { promiseDate, description },
+      newValue: { promiseDate, description, observation },
       userId: req.user!.id,
       ipAddress: req.ip
     });

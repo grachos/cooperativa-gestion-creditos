@@ -1,14 +1,16 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Plus, Search } from "lucide-react";
+import { Plus } from "lucide-react";
 import { api } from "../lib/api";
 import { useIdempotentSubmit } from "../hooks/useIdempotentSubmit";
 import { Loading, ErrorView, EmptyView } from "../components/StateViews";
+import { Pagination, SearchBox, useDebounced } from "../components/ListControls";
 import { useAuth } from "../context/AuthContext";
 import { useParameterList } from "../hooks/useParameterList";
 import { phoneError, emailError, birthDateError } from "../lib/validators";
 
+const PAGE_SIZE = 20;
 const DEFAULT_ID_TYPES = ["CC", "CE", "TI", "PA", "NIT"];
 
 const STATUS_STYLES: Record<string, string> = {
@@ -34,9 +36,16 @@ export default function AssociatesPage() {
   const [showForm, setShowForm] = useState(false);
   const queryClient = useQueryClient();
 
+  const term = useDebounced(search.trim());
+  const [page, setPage] = useState(1);
+  useEffect(() => setPage(1), [term]);
   const { data, isLoading, error } = useQuery({
-    queryKey: ["associates", search],
-    queryFn: () => api.get<{ data: Associate[] }>(`/associates?search=${encodeURIComponent(search)}`)
+    queryKey: ["associates", term, page],
+    queryFn: () =>
+      api.get<{ data: Associate[]; total: number }>(
+        `/associates?search=${encodeURIComponent(term)}&page=${page}&pageSize=${PAGE_SIZE}`
+      ),
+    placeholderData: (prev) => prev
   });
 
   return (
@@ -62,16 +71,12 @@ export default function AssociatesPage() {
         />
       )}
 
-      <div className="mb-4 flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2">
-        <Search className="h-4 w-4 text-slate-400" aria-hidden="true" />
-        <input
-          className="w-full text-sm focus:outline-none"
-          placeholder="Buscar por nombre o identificación"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          aria-label="Buscar asociados"
-        />
-      </div>
+      <SearchBox
+        value={search}
+        onChange={setSearch}
+        placeholder="Buscar por nombre o identificación"
+        label="Buscar asociados"
+      />
 
       {isLoading && <Loading />}
       {error && <ErrorView message={(error as Error).message} />}
@@ -140,6 +145,7 @@ export default function AssociatesPage() {
               </tbody>
             </table>
           </div>
+          <Pagination page={page} pageSize={PAGE_SIZE} total={data.total} onPage={setPage} />
         </>
       )}
     </div>

@@ -34,8 +34,8 @@ paymentsRouter.post(
       }
 
       const [paymentResult] = await conn.query<any>(
-        `INSERT INTO payments (credit_id, received_date, effective_date, amount, payment_method, reference, notes, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO payments (credit_id, received_date, effective_date, amount, payment_method, reference, notes, created_by, verified, verified_by, verified_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${data.verified ? "NOW()" : "NULL"})`,
         [
           data.creditId,
           data.receivedDate,
@@ -44,7 +44,9 @@ paymentsRouter.post(
           data.paymentMethod,
           data.reference ?? null,
           data.notes ?? null,
-          req.user!.id
+          req.user!.id,
+          data.verified ? 1 : 0,
+          data.verified ? req.user!.id : null
         ]
       );
       const paymentId = paymentResult.insertId;
@@ -100,6 +102,29 @@ paymentsRouter.post(
     invalidateReportCache();
     broadcastEvent("payment.registered", { creditId: data.creditId, paymentId: result.paymentId });
     res.status(201).json(result);
+  })
+);
+
+/** Marca un pago ya registrado como verificado en banco con soporte archivado (o quita la marca). */
+paymentsRouter.put(
+  "/:id/verified",
+  requirePermission("payments:write"),
+  asyncHandler(async (req, res) => {
+    const { id } = idParam.parse(req.params);
+    const verified = req.body?.verified !== false;
+    const [result] = await pool.query<any>(
+      `UPDATE payments SET verified = ?, verified_by = ?, verified_at = ${verified ? "NOW()" : "NULL"} WHERE id = ?`,
+      [verified ? 1 : 0, verified ? req.user!.id : null, id]
+    );
+    if (!result.affectedRows) throw new HttpError(404, "Pago no encontrado");
+    await recordAudit(pool, {
+      entity: "payment",
+      entityId: id,
+      action: verified ? "VERIFY" : "UNVERIFY",
+      userId: req.user!.id,
+      ipAddress: req.ip
+    });
+    res.json({ id, verified });
   })
 );
 

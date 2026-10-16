@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Plus } from "lucide-react";
@@ -7,6 +7,7 @@ import { formatCurrency, formatDate } from "../lib/format";
 import { Loading, ErrorView, EmptyView } from "../components/StateViews";
 import { useAuth } from "../context/AuthContext";
 import { TabBar, CrossfadePanels } from "../components/Tabs";
+import { Pagination, SearchBox, useDebounced } from "../components/ListControls";
 
 interface Application {
   id: number;
@@ -39,6 +40,7 @@ const FILTER_TABS = [
 export default function ApplicationsPage() {
   const { hasPermission } = useAuth();
   const [status, setStatus] = useState("TODAS");
+  const [search, setSearch] = useState("");
 
   return (
     <div>
@@ -54,18 +56,37 @@ export default function ApplicationsPage() {
         )}
       </div>
 
+      <SearchBox
+        value={search}
+        onChange={setSearch}
+        placeholder="Buscar por cédula, nombre del titular o número de solicitud"
+        label="Buscar solicitudes"
+      />
+
       <TabBar tabs={FILTER_TABS} active={status} onChange={setStatus} className="mb-4" />
 
-      <CrossfadePanels activeKey={status}>{(k) => <ApplicationsList status={k} />}</CrossfadePanels>
+      <CrossfadePanels activeKey={status}>{(k) => <ApplicationsList status={k} search={search} />}</CrossfadePanels>
     </div>
   );
 }
 
-function ApplicationsList({ status }: { status: string }) {
+const PAGE_SIZE = 20;
+
+function ApplicationsList({ status, search }: { status: string; search: string }) {
   const filter = status === "TODAS" ? "" : status;
+  const term = useDebounced(search.trim());
+  const [page, setPage] = useState(1);
+  // Al cambiar la búsqueda o el estado se vuelve a la primera página.
+  useEffect(() => setPage(1), [term, filter]);
   const { data, isLoading, error } = useQuery({
-    queryKey: ["applications", filter],
-    queryFn: () => api.get<{ data: Application[] }>(`/applications${filter ? `?status=${filter}` : ""}`)
+    queryKey: ["applications", filter, term, page],
+    queryFn: () => {
+      const qs = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
+      if (filter) qs.set("status", filter);
+      if (term) qs.set("search", term);
+      return api.get<{ data: Application[]; total: number }>(`/applications?${qs}`);
+    },
+    placeholderData: (prev) => prev
   });
 
   return (
@@ -123,6 +144,7 @@ function ApplicationsList({ status }: { status: string }) {
               </tbody>
             </table>
           </div>
+          <Pagination page={page} pageSize={PAGE_SIZE} total={data.total} onPage={setPage} />
         </>
       )}
     </div>

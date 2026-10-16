@@ -91,7 +91,11 @@ export const disbursementSchema = z.object({
   // recibe una tasa menor que la que paga el asociado. Opcional: si no se
   // envía, el crédito se asume fondeado con capital propio de la cooperativa.
   funderName: z.string().trim().min(1).max(255).optional().nullable(),
-  funderRatePercent: z.coerce.number().min(0).optional().nullable()
+  funderRatePercent: z.coerce.number().min(0).optional().nullable(),
+  // Datos del desembolso (reunión 2026-10-16). El soporte NO se sube: solo se marca si quedó archivado.
+  disbursementToAccount: z.string().trim().max(255).optional().nullable(),
+  disbursementFromAccount: z.string().trim().max(255).optional().nullable(),
+  disbursementProofFiled: z.boolean().optional().default(false)
 });
 
 export const refinanceSchema = z.object({
@@ -111,7 +115,9 @@ export const adjustmentSchema = z.object({
 
 export const promiseSchema = z.object({
   promiseDate: z.string().date(),
-  description: z.string().max(255).optional().nullable()
+  description: z.string().max(255).optional().nullable(),
+  // Segunda nota, distinta de la del compromiso (p. ej. "titular se retiró de la empresa").
+  observation: z.string().trim().max(500).optional().nullable()
 });
 
 export const paymentSchema = z.object({
@@ -121,7 +127,9 @@ export const paymentSchema = z.object({
   amount: z.coerce.number().positive(),
   paymentMethod: z.string().min(1).max(60),
   reference: z.string().max(120).optional().nullable(),
-  notes: z.string().max(255).optional().nullable()
+  notes: z.string().max(255).optional().nullable(),
+  // El pago se verificó en el banco y su soporte quedó archivado.
+  verified: z.boolean().optional().default(false)
 });
 
 export const reversalSchema = z.object({

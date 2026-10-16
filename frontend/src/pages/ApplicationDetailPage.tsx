@@ -6,6 +6,7 @@ import { useIdempotentSubmit } from "../hooks/useIdempotentSubmit";
 import { formatCurrency, formatDate, formatPercent } from "../lib/format";
 import { Loading, ErrorView } from "../components/StateViews";
 import { useAuth } from "../context/AuthContext";
+import { useParameterList } from "../hooks/useParameterList";
 
 interface ReviewItem {
   id: number;
@@ -15,6 +16,8 @@ interface ReviewItem {
 
 interface ApplicationDocument extends ReviewItem {
   document_type: string;
+  // null en solicitudes anteriores: el documento era "de la solicitud", no de un participante.
+  credit_participant_id: number | null;
 }
 
 interface ApplicationParticipant extends ReviewItem {
@@ -133,6 +136,10 @@ export default function ApplicationDetailPage() {
   const [firstInstallmentDate, setFirstInstallmentDate] = useState("");
   const [assignedCollectorId, setAssignedCollectorId] = useState("");
   const [assignedSellerId, setAssignedSellerId] = useState("");
+  const [toAccount, setToAccount] = useState("");
+  const [fromAccount, setFromAccount] = useState("");
+  const [proofFiled, setProofFiled] = useState(false);
+  const coopAccounts = useParameterList("cuentas_bancarias_cooperativa", []);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const { data, isLoading, error } = useQuery({
@@ -215,7 +222,10 @@ export default function ApplicationDetailPage() {
       disbursementDate,
       firstInstallmentDate,
       assignedCollectorId: assignedCollectorId ? Number(assignedCollectorId) : undefined,
-      assignedSellerId: assignedSellerId ? Number(assignedSellerId) : undefined
+      assignedSellerId: assignedSellerId ? Number(assignedSellerId) : undefined,
+      disbursementToAccount: toAccount.trim() || undefined,
+      disbursementFromAccount: fromAccount.trim() || undefined,
+      disbursementProofFiled: proofFiled
     };
     try {
       const out = await submitDisbursement(payload, (idempotencyKey) =>
@@ -249,39 +259,65 @@ export default function ApplicationDetailPage() {
         <p className="text-sm text-slate-600">Destino: {data.purpose ?? "—"}</p>
       </div>
 
-      <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
-        <h2 className="mb-2 text-sm font-semibold text-slate-700">Participantes</h2>
-        <ul className="space-y-2">
-          {data.participants.map((p) => (
-            <ReviewRow
-              key={p.id}
-              label={`${p.role}: ${p.first_name ? `${p.first_name} ${p.last_name}` : "—"}`}
-              item={p}
-              canReview={canReview}
-              onSave={async (status, notes) => {
-                await reviewParticipant.mutateAsync({ participantId: p.id, status, notes });
-              }}
-            />
-          ))}
-        </ul>
-      </div>
+      {data.participants.map((p) => {
+        const docs = data.documents.filter((d) => d.credit_participant_id === p.id);
+        return (
+          <div key={p.id} className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
+            <h2 className="mb-2 text-sm font-semibold text-slate-700">
+              {p.role === "TITULAR" ? "Titular" : "Codeudor"}: {p.first_name ? `${p.first_name} ${p.last_name}` : "—"}
+            </h2>
+            <ul className="space-y-2">
+              <ReviewRow
+                label="Aprobación del participante"
+                item={p}
+                canReview={canReview}
+                onSave={async (status, notes) => {
+                  await reviewParticipant.mutateAsync({ participantId: p.id, status, notes });
+                }}
+              />
+            </ul>
+            {docs.length > 0 && (
+              <>
+                <h3 className="mb-1 mt-3 text-xs font-semibold uppercase text-slate-400">Documentos requeridos</h3>
+                <ul className="space-y-2">
+                  {docs.map((d) => (
+                    <ReviewRow
+                      key={d.id}
+                      label={d.document_type}
+                      item={d}
+                      canReview={canReview}
+                      onSave={async (status, notes) => {
+                        await reviewDocument.mutateAsync({ documentId: d.id, status, notes });
+                      }}
+                    />
+                  ))}
+                </ul>
+              </>
+            )}
+          </div>
+        );
+      })}
 
-      <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
-        <h2 className="mb-2 text-sm font-semibold text-slate-700">Documentos requeridos</h2>
-        <ul className="space-y-2">
-          {data.documents.map((d) => (
-            <ReviewRow
-              key={d.id}
-              label={d.document_type}
-              item={d}
-              canReview={canReview}
-              onSave={async (status, notes) => {
-                await reviewDocument.mutateAsync({ documentId: d.id, status, notes });
-              }}
-            />
-          ))}
-        </ul>
-      </div>
+      {data.documents.some((d) => d.credit_participant_id === null) && (
+        <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
+          <h2 className="mb-2 text-sm font-semibold text-slate-700">Documentos de la solicitud</h2>
+          <ul className="space-y-2">
+            {data.documents
+              .filter((d) => d.credit_participant_id === null)
+              .map((d) => (
+                <ReviewRow
+                  key={d.id}
+                  label={d.document_type}
+                  item={d}
+                  canReview={canReview}
+                  onSave={async (status, notes) => {
+                    await reviewDocument.mutateAsync({ documentId: d.id, status, notes });
+                  }}
+                />
+              ))}
+          </ul>
+        </div>
+      )}
 
       {data.rejection_reason && (
         <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
@@ -381,6 +417,44 @@ export default function ApplicationDetailPage() {
                 ))}
               </select>
             </div>
+            <div className="col-span-2">
+              <label className="mb-1 block text-xs text-slate-500">Cuenta destino del asociado (banco, tipo y número)</label>
+              <input
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                maxLength={255}
+                value={toAccount}
+                onChange={(e) => setToAccount(e.target.value)}
+              />
+            </div>
+            <div className="col-span-2">
+              <label className="mb-1 block text-xs text-slate-500">Cuenta de la cooperativa de la que sale el desembolso</label>
+              {coopAccounts.length > 0 ? (
+                <select
+                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  value={fromAccount}
+                  onChange={(e) => setFromAccount(e.target.value)}
+                >
+                  <option value="">Sin indicar</option>
+                  {coopAccounts.map((a) => (
+                    <option key={a} value={a}>
+                      {a}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  maxLength={255}
+                  placeholder="Se puede parametrizar la lista en Parámetros › cuentas_bancarias_cooperativa"
+                  value={fromAccount}
+                  onChange={(e) => setFromAccount(e.target.value)}
+                />
+              )}
+            </div>
+            <label className="col-span-2 flex items-center gap-2 text-sm text-slate-700">
+              <input type="checkbox" checked={proofFiled} onChange={(e) => setProofFiled(e.target.checked)} />
+              Soporte del desembolso archivado (pantallazo del banco)
+            </label>
           </div>
           <button
             onClick={() => void disburse()}

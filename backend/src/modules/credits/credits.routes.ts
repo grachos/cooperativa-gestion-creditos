@@ -42,6 +42,7 @@ creditsRouter.post(
     const { id } = idParam.parse(req.params);
     const { disbursementDate, firstInstallmentDate, assignedCollectorId, assignedSellerId, funderName, funderRatePercent } =
       disbursementSchema.parse(req.body);
+    const { disbursementToAccount, disbursementFromAccount, disbursementProofFiled } = disbursementSchema.parse(req.body);
 
     const credit = await withTransaction(async (conn) => {
       // Bloqueo de la solicitud (PRIMERA sentencia de la transacción): un segundo
@@ -56,8 +57,8 @@ creditsRouter.post(
 
       const [result] = await conn.query<any>(
         `INSERT INTO credits
-          (credit_number, credit_application_id, titular_associate_id, titular_society_id, assigned_collector_id, assigned_seller_id, disbursed_amount, principal_balance, interest_rate, rate_type, term_value, disbursement_date, first_installment_date, delinquency_policy_snapshot, parameters_snapshot, funder_name, funder_rate_percent, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (credit_number, credit_application_id, titular_associate_id, titular_society_id, assigned_collector_id, assigned_seller_id, disbursed_amount, principal_balance, interest_rate, rate_type, term_value, disbursement_date, first_installment_date, delinquency_policy_snapshot, parameters_snapshot, funder_name, funder_rate_percent, disbursement_to_account, disbursement_from_account, disbursement_proof_filed, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           creditNumber,
           id,
@@ -76,6 +77,9 @@ creditsRouter.post(
           JSON.stringify({ rateType: app.rate_type, termValue: app.term_value }),
           funderName ?? null,
           funderRatePercent ?? null,
+          disbursementToAccount || null,
+          disbursementFromAccount || null,
+          disbursementProofFiled ? 1 : 0,
           req.user!.id
         ]
       );
@@ -151,22 +155,37 @@ creditsRouter.get(
   asyncHandler(async (req, res) => {
     const { page, pageSize } = paginationQuery.parse(req.query);
     const status = req.query.status as string | undefined;
+    const search = (req.query.search as string | undefined)?.trim().slice(0, 80);
     const offset = (page - 1) * pageSize;
-    const where = status ? `WHERE c.status = ?` : "";
-    const args = status ? [status] : [];
+
+    // Búsqueda por número de crédito, cédula/NIT (prefijo), nombre del titular o razón social.
+    const conditions: string[] = [];
+    const args: unknown[] = [];
+    if (status) {
+      conditions.push(`c.status = ?`);
+      args.push(status);
+    }
+    if (search) {
+      conditions.push(
+        `(c.credit_number LIKE ? OR a.id_number LIKE ? OR CONCAT(a.first_name, ' ', a.last_name) LIKE ? OR s.legal_name LIKE ? OR s.tax_id_number LIKE ?)`
+      );
+      args.push(`%${search}%`, `${search}%`, `%${search}%`, `%${search}%`, `${search}%`);
+    }
+    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+    const fromJoin = `FROM credits c
+       LEFT JOIN associates a ON a.id = c.titular_associate_id
+       LEFT JOIN societies s ON s.id = c.titular_society_id`;
 
     const [rows] = await pool.query<any[]>(
-      `SELECT c.*, a.first_name, a.last_name, s.legal_name,
+      `SELECT c.*, a.first_name, a.last_name, a.id_number, s.legal_name,
               (SELECT MAX(GREATEST(DATEDIFF(CURRENT_DATE, csi.due_date), 0))
                FROM credit_schedule_installments csi
                WHERE csi.credit_id = c.id AND csi.status NOT IN ('PAGADA','ANULADA')) AS max_overdue_days
-       FROM credits c
-       LEFT JOIN associates a ON a.id = c.titular_associate_id
-       LEFT JOIN societies s ON s.id = c.titular_society_id
+       ${fromJoin}
        ${where} ORDER BY c.created_at DESC LIMIT ? OFFSET ?`,
       [...args, pageSize, offset]
     );
-    const [countRows] = await pool.query<any[]>(`SELECT COUNT(*) as total FROM credits c ${where}`, args);
+    const [countRows] = await pool.query<any[]>(`SELECT COUNT(*) as total ${fromJoin} ${where}`, args);
     const buckets = await loadMoraBuckets(pool);
     const data = (rows as any[]).map((row) => {
       const bucket = getMoraBucket(Number(row.max_overdue_days ?? 0), buckets);
@@ -199,7 +218,9 @@ creditsRouter.get(
       [id]
     );
     const [payments] = await pool.query<any[]>(
-      `SELECT * FROM payments WHERE credit_id = ? ORDER BY received_date DESC`,
+      `SELECT p.*, vu.full_name AS verified_by_name FROM payments p
+       LEFT JOIN users vu ON vu.id = p.verified_by
+       WHERE p.credit_id = ? ORDER BY p.received_date DESC`,
       [id]
     );
     const [alerts] = await pool.query<any[]>(

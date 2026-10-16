@@ -164,3 +164,21 @@ describe("PaymentForm: doble envío", () => {
     expect(paymentCalls[1]!.key).toBe(firstKey);
   });
 });
+
+describe("PaymentForm: pago verificado", () => {
+  it("envía verified=false por defecto y verified=true si se marca la casilla", async () => {
+    const user = userEvent.setup();
+    setup();
+    await user.type(amountInput(), "1000");
+    await user.click(button());
+    await waitFor(() => expect(paymentCalls).toHaveLength(1));
+    expect(JSON.parse(paymentCalls[0]!.body).verified).toBe(false);
+    await settle(0, json(201, { paymentId: 1 }));
+
+    await user.type(amountInput(), "2000");
+    await user.click(screen.getByLabelText(/verificado en el banco/i));
+    await user.click(button());
+    await waitFor(() => expect(paymentCalls).toHaveLength(2));
+    expect(JSON.parse(paymentCalls[1]!.body).verified).toBe(true);
+  });
+});

@@ -32,6 +32,8 @@ interface Payment {
   amount: string;
   payment_method: string;
   status: string;
+  verified: boolean;
+  verified_by_name: string | null;
 }
 
 interface Adjustment {
@@ -48,6 +50,7 @@ interface CollectionAction {
   id: number;
   action_type: string;
   description: string | null;
+  observation: string | null;
   promise_date: string | null;
   promise_status: string | null;
   status: string;
@@ -56,6 +59,9 @@ interface CollectionAction {
 
 interface CreditDetail {
   id: number;
+  disbursement_to_account: string | null;
+  disbursement_from_account: string | null;
+  disbursement_proof_filed: boolean;
   credit_number: string;
   disbursed_amount: string;
   principal_balance: string;
@@ -109,6 +115,15 @@ export default function CreditDetailPage() {
         {data.refinanced_from_credit_number && <> · Refinanció a {data.refinanced_from_credit_number}</>}
         {data.refinanced_to_credit_number && <> · Refinanciado en {data.refinanced_to_credit_number}</>}
       </p>
+
+      {(data.disbursement_to_account || data.disbursement_from_account || data.disbursement_proof_filed) && (
+        <p className="mb-4 text-sm text-slate-500">
+          Desembolso: {data.disbursement_from_account ? `salió de ${data.disbursement_from_account}` : "cuenta de origen sin indicar"}
+          {" → "}
+          {data.disbursement_to_account ?? "cuenta destino sin indicar"} · Soporte{" "}
+          {data.disbursement_proof_filed ? "archivado" : "sin archivar"}
+        </p>
+      )}
 
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <SummaryCard label="Monto desembolsado" value={formatCurrency(data.disbursed_amount)} />
@@ -166,6 +181,7 @@ export default function CreditDetailPage() {
                 <th className="px-3 py-2">Valor</th>
                 <th className="px-3 py-2">Medio</th>
                 <th className="px-3 py-2">Estado</th>
+                <th className="px-3 py-2">Verificado en banco</th>
                 {hasPermission("payments:write") && <th className="px-3 py-2" />}
               </tr>
             </thead>
@@ -176,6 +192,13 @@ export default function CreditDetailPage() {
                   <td className="px-3 py-2">{formatCurrency(p.amount)}</td>
                   <td className="px-3 py-2">{p.payment_method}</td>
                   <td className="px-3 py-2">{p.status}</td>
+                  <td className="px-3 py-2">
+                    <VerifiedCell
+                      payment={p}
+                      canEdit={hasPermission("payments:write") && p.status === "CONFIRMADO"}
+                      onDone={() => void queryClient.invalidateQueries({ queryKey: ["credit", id] })}
+                    />
+                  </td>
                   {hasPermission("payments:write") && (
                     <td className="px-3 py-2">
                       {p.status === "CONFIRMADO" && (
@@ -204,6 +227,7 @@ export default function CreditDetailPage() {
                 <span>
                   {formatDate(c.promise_date)}: {c.description ?? "Compromiso de pago"}{" "}
                   <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs">{c.promise_status ?? c.status}</span>
+                  {c.observation && <span className="block text-xs text-slate-500">Observación: {c.observation}</span>}
                 </span>
                 {hasPermission("collections:write") && c.promise_status === "PENDIENTE" && (
                   <ResolvePromiseButtons
@@ -283,17 +307,19 @@ export function PaymentForm({ creditId, onRegistered }: { creditId: number; onRe
   const [amount, setAmount] = useState("");
   const [receivedDate, setReceivedDate] = useState(new Date().toISOString().slice(0, 10));
   const [paymentMethod, setPaymentMethod] = useState("TRANSFERENCIA");
+  const [verified, setVerified] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { submit, pending: submitting } = useIdempotentSubmit(`payment:${creditId}`);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    const payload = { creditId, receivedDate, amount: Number(amount), paymentMethod };
+    const payload = { creditId, receivedDate, amount: Number(amount), paymentMethod, verified };
     try {
       const out = await submit(payload, (idempotencyKey) => api.post("/payments", payload, { idempotencyKey }));
       if (!out.ran) return; // envío duplicado ignorado
       setAmount("");
+      setVerified(false);
       onRegistered();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al registrar el pago");
@@ -332,6 +358,10 @@ export function PaymentForm({ creditId, onRegistered }: { creditId: number; onRe
           ))}
         </select>
       </div>
+      <label className="mt-3 flex items-center gap-2 text-sm text-slate-700">
+        <input type="checkbox" checked={verified} onChange={(e) => setVerified(e.target.checked)} />
+        Pago verificado en el banco y soporte archivado
+      </label>
       <button
         type="submit"
         disabled={submitting}
@@ -346,6 +376,7 @@ export function PaymentForm({ creditId, onRegistered }: { creditId: number; onRe
 function PromiseForm({ creditId, onCreated }: { creditId: number; onCreated: () => void }) {
   const [promiseDate, setPromiseDate] = useState("");
   const [description, setDescription] = useState("");
+  const [observation, setObservation] = useState("");
   const [error, setError] = useState<string | null>(null);
   const { submit, pending: submitting } = useIdempotentSubmit(`promise:${creditId}`);
 
@@ -356,7 +387,7 @@ function PromiseForm({ creditId, onCreated }: { creditId: number; onCreated: () 
       setError("Debe indicar la fecha del compromiso");
       return;
     }
-    const payload = { promiseDate, description: description || undefined };
+    const payload = { promiseDate, description: description || undefined, observation: observation || undefined };
     try {
       const out = await submit(payload, (idempotencyKey) =>
         api.post(`/credits/${creditId}/promises`, payload, { idempotencyKey })
@@ -364,6 +395,7 @@ function PromiseForm({ creditId, onCreated }: { creditId: number; onCreated: () 
       if (!out.ran) return;
       setPromiseDate("");
       setDescription("");
+      setObservation("");
       onCreated();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al registrar el compromiso");
@@ -371,7 +403,7 @@ function PromiseForm({ creditId, onCreated }: { creditId: number; onCreated: () 
   }
 
   return (
-    <form onSubmit={onSubmit} className="flex flex-col gap-2 sm:flex-row">
+    <form onSubmit={onSubmit} className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
       {error && <p className="w-full rounded-md bg-red-50 p-2 text-sm text-red-700">{error}</p>}
       <input
         type="date"
@@ -385,6 +417,13 @@ function PromiseForm({ creditId, onCreated }: { creditId: number; onCreated: () 
         value={description}
         onChange={(e) => setDescription(e.target.value)}
       />
+      <input
+        className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
+        placeholder="Observación (opcional)"
+        maxLength={500}
+        value={observation}
+        onChange={(e) => setObservation(e.target.value)}
+      />
       <button
         type="submit"
         disabled={submitting}
@@ -393,6 +432,35 @@ function PromiseForm({ creditId, onCreated }: { creditId: number; onCreated: () 
         {submitting ? "Registrando..." : "Registrar compromiso"}
       </button>
     </form>
+  );
+}
+
+function VerifiedCell({ payment, canEdit, onDone }: { payment: Payment; canEdit: boolean; onDone: () => void }) {
+  const [busy, setBusy] = useState(false);
+  async function toggle() {
+    setBusy(true);
+    try {
+      await api.put(`/payments/${payment.id}/verified`, { verified: !payment.verified });
+      onDone();
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <span className="flex items-center gap-2">
+      {payment.verified ? (
+        <span className="rounded-full bg-brand-50 px-2 py-0.5 text-xs text-brand-700" title={payment.verified_by_name ?? undefined}>
+          Verificado{payment.verified_by_name ? ` · ${payment.verified_by_name}` : ""}
+        </span>
+      ) : (
+        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">Sin verificar</span>
+      )}
+      {canEdit && (
+        <button type="button" disabled={busy} onClick={() => void toggle()} className="text-xs text-brand-700 hover:underline disabled:opacity-60">
+          {payment.verified ? "Quitar" : "Marcar"}
+        </button>
+      )}
+    </span>
   );
 }
 

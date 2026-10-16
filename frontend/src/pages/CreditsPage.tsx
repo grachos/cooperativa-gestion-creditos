@@ -1,8 +1,10 @@
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "../lib/api";
 import { formatCurrency } from "../lib/format";
 import { Loading, ErrorView, EmptyView } from "../components/StateViews";
+import { Pagination, SearchBox, useDebounced } from "../components/ListControls";
 
 interface Credit {
   id: number;
@@ -26,19 +28,37 @@ const MORA_BADGE_CLASS: Record<string, string> = {
   CM180: "bg-red-200 text-red-900"
 };
 
-export default function CreditsPage() {
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["credits"],
-    queryFn: () => api.get<{ data: Credit[] }>("/credits")
-  });
+const PAGE_SIZE = 20;
 
-  if (isLoading) return <Loading />;
-  if (error) return <ErrorView message={(error as Error).message} />;
+export default function CreditsPage() {
+  const [search, setSearch] = useState("");
+  const term = useDebounced(search.trim());
+  const [page, setPage] = useState(1);
+  useEffect(() => setPage(1), [term]);
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["credits", term, page],
+    queryFn: () => {
+      const qs = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
+      if (term) qs.set("search", term);
+      return api.get<{ data: Credit[]; total: number }>(`/credits?${qs}`);
+    },
+    placeholderData: (prev) => prev
+  });
 
   return (
     <div>
       <h1 className="mb-4 text-xl font-semibold text-slate-800">Créditos</h1>
-      {data && data.data.length === 0 && <EmptyView message="No hay créditos desembolsados." />}
+      <SearchBox
+        value={search}
+        onChange={setSearch}
+        placeholder="Buscar por número de crédito, cédula o nombre del titular"
+        label="Buscar créditos"
+      />
+      {isLoading && <Loading />}
+      {error && <ErrorView message={(error as Error).message} />}
+      {data && data.data.length === 0 && (
+        <EmptyView message={term ? "No se encontraron créditos con esa búsqueda." : "No hay créditos desembolsados."} />
+      )}
       {data && data.data.length > 0 && (
         <>
           <div className="grid grid-cols-1 gap-3 sm:hidden">
@@ -105,6 +125,7 @@ export default function CreditsPage() {
               </tbody>
             </table>
           </div>
+          <Pagination page={page} pageSize={PAGE_SIZE} total={data.total} onPage={setPage} />
         </>
       )}
     </div>
