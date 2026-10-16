@@ -16,7 +16,7 @@ y qué falta.
 
 ## Fase 1 — Ajustes rápidos (no dependen de datos del cliente) — IMPLEMENTADA (2026-10-16)
 
-Nota: la fecha de desembolso ya existía; se agregaron cuentas y soporte. Falta la marca de verificación dentro del cronograma de cuotas (hoy se ve en la tabla de pagos).
+Nota: la fecha de desembolso ya existía; se agregaron cuentas y soporte. La marca de verificación también aparece en el cronograma de cuotas.
 
 1. **Búsqueda y paginación en listados.** Asociados, Solicitudes y Créditos.
    - Hoy: el backend ya pagina (`?page=&pageSize=`) y Asociados busca por nombre/cédula, pero

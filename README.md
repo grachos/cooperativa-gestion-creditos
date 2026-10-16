@@ -478,7 +478,7 @@ Plan completo en `docs/plan-reunion-2026-10-16.md`. Migración `023_reunion_fase
   asociado), `disbursementFromAccount` (cuenta de la cooperativa; lista en el parámetro
   `cuentas_bancarias_cooperativa`) y `disbursementProofFiled`. La fecha de desembolso ya existía.
 
-Pendiente de la Fase 1: mostrar la marca de verificación también dentro del cronograma de cuotas.
+- **Cronograma de cuotas:** columna "Pago verificado" (por cuota: verificado, sin verificar o sin pagos).
 
 ## Escalabilidad y concurrencia
 

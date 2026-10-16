@@ -213,10 +213,26 @@ creditsRouter.get(
     const credit = (rows as any[])[0];
     if (!credit) throw new HttpError(404, "Crédito no encontrado");
 
-    const [schedule] = await pool.query<any[]>(
+    const [scheduleRows] = await pool.query<any[]>(
       `SELECT * FROM credit_schedule_installments WHERE credit_id = ? ORDER BY installment_number ASC`,
       [id]
     );
+    // Por cuota: cuántos pagos confirmados la tocaron y cuántos de ellos siguen sin verificar en banco.
+    const [verification] = await pool.query<any[]>(
+      `SELECT pa.installment_id,
+              COUNT(DISTINCT p.id) AS payments_count,
+              COUNT(DISTINCT CASE WHEN p.verified = 0 THEN p.id END) AS unverified_payments
+       FROM payment_allocations pa
+       JOIN payments p ON p.id = pa.payment_id
+       WHERE p.credit_id = ? AND p.status = 'CONFIRMADO' AND pa.installment_id IS NOT NULL
+       GROUP BY pa.installment_id`,
+      [id]
+    );
+    const verificationByInstallment = new Map((verification as any[]).map((v) => [v.installment_id, v]));
+    const schedule = (scheduleRows as any[]).map((row) => {
+      const v = verificationByInstallment.get(row.id);
+      return { ...row, payments_count: Number(v?.payments_count ?? 0), unverified_payments: Number(v?.unverified_payments ?? 0) };
+    });
     const [payments] = await pool.query<any[]>(
       `SELECT p.*, vu.full_name AS verified_by_name FROM payments p
        LEFT JOIN users vu ON vu.id = p.verified_by

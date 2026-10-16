@@ -164,6 +164,15 @@ describe.skipIf(process.env.TEST_DB !== "1")("Fase 1 de la reunión: documentos 
     expect((await call("PUT", `/payments/${p2.body.paymentId}/verified`, { verified: false })).status).toBe(200);
     expect((await list()).find((r) => r.id === p2.body.paymentId).verified).toBe(false);
     expect((await call("PUT", "/payments/999999999/verified", { verified: true })).status).toBe(404);
+
+    // cronograma: la cuota que recibió pagos muestra cuántos siguen sin verificar
+    const sched = async () => ((await call("GET", `/credits/${c.creditId}`)).body.schedule as any[])[0];
+    expect((await sched()).payments_count).toBe(2);
+    expect((await sched()).unverified_payments).toBe(1); // p2 quedó sin verificar
+    await call("PUT", `/payments/${p2.body.paymentId}/verified`, { verified: true });
+    expect((await sched()).unverified_payments).toBe(0);
+    const untouched = ((await call("GET", `/credits/${c.creditId}`)).body.schedule as any[]).at(-1);
+    expect(untouched.payments_count).toBe(0);
   });
 
   it("búsqueda en solicitudes y créditos: por cédula (prefijo), nombre y número de crédito; el total respeta el filtro", async () => {

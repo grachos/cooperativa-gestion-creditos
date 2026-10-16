@@ -13,6 +13,8 @@ const DEFAULT_ADJUSTMENT_TYPES = ["INTERES_CAMBIO_FECHA", "DESCUENTO", "GASTO_NO
 
 interface Installment {
   id: number;
+  payments_count: number;
+  unverified_payments: number;
   installment_number: number;
   due_date: string;
   total_due: string;
@@ -150,6 +152,7 @@ export default function CreditDetailPage() {
               <th className="px-3 py-2">Saldo</th>
               <th className="px-3 py-2">Atraso</th>
               <th className="px-3 py-2">Estado</th>
+              <th className="px-3 py-2">Pago verificado</th>
             </tr>
           </thead>
           <tbody>
@@ -162,6 +165,17 @@ export default function CreditDetailPage() {
                 <td className="px-3 py-2">{row.overdue_days > 0 ? `${row.overdue_days} días` : "—"}</td>
                 <td className="px-3 py-2">
                   <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs">{row.status}</span>
+                </td>
+                <td className="px-3 py-2">
+                  {row.payments_count === 0 ? (
+                    "—"
+                  ) : row.unverified_payments === 0 ? (
+                    <span className="rounded-full bg-brand-50 px-2 py-0.5 text-xs text-brand-700">Verificado</span>
+                  ) : (
+                    <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
+                      Sin verificar ({row.unverified_payments})
+                    </span>
+                  )}
                 </td>
               </tr>
             ))}
