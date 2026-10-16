@@ -31,14 +31,24 @@ y qué falta.
    cooperativa desde la que salió (lista parametrizable) y casilla "soporte de desembolso archivado".
    No se suben archivos: el soporte se guarda fuera de la app (decisión de la reunión, por costo de servidor).
 
+5. **Documentos requeridos por participante (titular y cada codeudor), parametrizables.**
+   - Hoy: hay un solo parámetro `documentos_requeridos` con una lista única por **solicitud**; no distingue
+     si el documento es del titular o de un codeudor, y con dos codeudores no hay forma de marcar
+     "cédula del codeudor 2".
+   - Falta: en Parámetros, dos listas editables — documentos del **titular** y documentos de **cada codeudor**
+     (agregar, quitar, renombrar, marcar obligatorio/opcional). En la revisión de la solicitud, cada
+     participante muestra su propia lista con aprobado/rechazado, observación, quién y cuándo. Para aprobar,
+     los obligatorios de todos los participantes deben estar revisados.
+   - Las solicitudes ya existentes conservan su lista actual (no se reescribe el histórico).
+
 ## Fase 2 — Permisos por acción y trazabilidad
 
-5. **Permisos por usuario con casillas.** Hoy hay roles fijos (permisos como `applications:write`,
+6. **Permisos por usuario con casillas.** Hoy hay roles fijos (permisos como `applications:write`,
    `applications:approve`, `payments:write`). Falta:
    - Separar permisos finos: radicar solicitud, poner en revisión, revisar documentos/participantes,
      aprobar/rechazar, desembolsar, registrar pagos, negociar mora/descuentos.
    - En Usuarios, una sección de casillas "qué puede hacer" por usuario (además del rol).
-6. **Registro de quién hizo qué.** La base ya guarda `created_by`, `decided_by`, `reviewed_by`,
+7. **Registro de quién hizo qué.** La base ya guarda `created_by`, `decided_by`, `reviewed_by`,
    historial de estados y `audit_logs`. Falta mostrarlo:
    - En el detalle de solicitud y crédito: "Radicó / revisó / aprobó / desembolsó / registró pago: usuario, fecha".
    - Reporte "Actividad por usuario" filtrable por usuario, acción y fechas, exportable a CSV.
@@ -46,32 +56,34 @@ y qué falta.
 
 ## Fase 3 — Asesores externos
 
-7. Hoy el "vendedor" de un crédito es un usuario sin roles (no entra al sistema), lo que ya cumple
+8. Hoy el "vendedor" de un crédito es un usuario sin roles (no entra al sistema), lo que ya cumple
    la idea. Falta: llamarlo **Asesor**, poder asignarlo **al radicar la solicitud** (hoy solo en el crédito)
    y un filtro/reporte de créditos por asesor.
 
 ## Fase 4 — Documentos físicos y módulo jurídico
 
-8. **Categorías de documentos parametrizables:** solicitud (existe), asociado y cobro jurídico.
-9. **Documentos del asociado:** lista de chequeo "lo tenemos en físico: sí/no" (cédula, certificación
+9. **Categorías de documentos parametrizables:** además de las de solicitud (titular/codeudor, Fase 1), las del asociado y las de cobro jurídico.
+10. **Documentos del asociado:** lista de chequeo "lo tenemos en físico: sí/no" (cédula, certificación
    laboral, desprendibles, referencias…), con quién lo marcó y cuándo.
-10. **Módulo de cobro jurídico** por crédito: documentos (notificación de embargo, embargo, etc.) con
+11. **Módulo de cobro jurídico** por crédito: documentos (notificación de embargo, embargo, etc.) con
     la misma lista "en nuestro poder sí/no" y bitácora de gestiones. Hoy existe el tipo
     `PREPARACION_JURIDICA` en gestiones de cobro, pero sin documentos.
 
 ## Fase 5 — Interés de mora, gastos y descuentos (requiere datos del cliente)
 
-11. **Interés de mora sugerido.** Hoy la política es "no se cobra mora automática"
-    (parámetro `politica_mora`). Lo pedido:
-    - Parametrizar tasa de mora, base (diaria o mensual), días de gracia (se mencionó cobrar a los 8 días, 1,5 %).
+12. **Interés de mora sugerido.** Hoy la política es "no se cobra mora automática"
+    (parámetro `politica_mora`) y **no existe ningún parámetro de tasa de mora**. Lo pedido:
+    - Parámetro editable en Parámetros: **% de interés de mora por día de atraso** (con historial de cambios
+      y motivo, como la tasa corriente). Opcional: días de gracia antes de empezar a cobrar.
+    - Cálculo: saldo vencido × % diario × días de atraso (la base exacta — cuota completa o solo capital — la confirma el cliente).
     - Al registrar un pago, mostrar: cuota ordinaria, mora sugerida y total sugerido.
     - Solo quien tenga el permiso "negociar mora" (Jorge Enrique) decide cobrarla completa, parcial o no cobrarla;
       la decisión queda registrada como ajuste del crédito.
-12. **Gasto de notificación automático** a los 30/60 días de mora (como sugerido, mismo criterio).
-13. **Descuento por pago anticipado / cancelación anticipada del crédito**, parametrizable.
+13. **Gasto de notificación automático** a los 30/60 días de mora (como sugerido, mismo criterio).
+14. **Descuento por pago anticipado / cancelación anticipada del crédito**, parametrizable.
 
 **Bloqueo:** Jorge Enrique y Tatiana deben entregar los valores y condiciones exactos
-(tasa y base de mora, días de gracia, valor y momento del gasto de notificación, reglas del descuento).
+(valor del % diario de mora y sobre qué saldo se aplica, días de gracia, valor y momento del gasto de notificación, reglas del descuento).
 
 ## Fase 6 — Fuera de este alcance (se coordina aparte)
 
