@@ -418,6 +418,7 @@ export default function ReportsPage() {
     { key: "due", label: "Pagos por fecha" },
     { key: "mora", label: "Mora por bucket" },
     { key: "overdue", label: "Cuotas vencidas" },
+    { key: "seller", label: "Por asesor" },
     { key: "export", label: "Exportar pagos" }
   ] as const;
   const [tab, setTab] = useState<(typeof TABS)[number]["key"]>("monthly");
@@ -847,6 +848,8 @@ export default function ReportsPage() {
       </div>
       )}
 
+      {k === "seller" && <SellerReport />}
+
       {k === "export" && (
       <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
         <h2 className="mb-3 text-sm font-semibold text-slate-700">Exportar pagos</h2>
@@ -890,6 +893,57 @@ export default function ReportsPage() {
           </>
         )}
       </CrossfadePanels>
+    </div>
+  );
+}
+
+interface SellerRow {
+  sellerId: number | null;
+  sellerName: string;
+  credits: number;
+  disbursedAmount: number;
+  outstandingPrincipal: number;
+  creditsInArrears: number;
+}
+
+/** Créditos por asesor: cuántos vendió, cuánto se desembolsó, saldo vigente y cuántos están en mora. */
+function SellerReport() {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["report-by-seller"],
+    queryFn: () => api.get<{ data: SellerRow[] }>("/reports/by-seller")
+  });
+  return (
+    <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
+      <h2 className="mb-3 text-sm font-semibold text-slate-700">Créditos por asesor</h2>
+      {isLoading && <Loading />}
+      {error && <ErrorView message={(error as Error).message} />}
+      {data && data.data.length === 0 && <EmptyView message="Aún no hay créditos." />}
+      {data && data.data.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="text-left text-xs uppercase text-slate-400">
+              <tr>
+                <th className="py-1">Asesor</th>
+                <th className="py-1">Créditos</th>
+                <th className="py-1">Desembolsado</th>
+                <th className="py-1">Saldo de capital</th>
+                <th className="py-1">En mora</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.data.map((r) => (
+                <tr key={r.sellerId ?? "none"} className="border-t border-slate-100">
+                  <td className="py-1">{r.sellerName}</td>
+                  <td className="py-1">{r.credits}</td>
+                  <td className="py-1">{formatCurrency(r.disbursedAmount)}</td>
+                  <td className="py-1">{formatCurrency(r.outstandingPrincipal)}</td>
+                  <td className="py-1">{r.creditsInArrears}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

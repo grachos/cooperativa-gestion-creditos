@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { formatCurrency, formatDate } from "../lib/format";
 import { Loading, ErrorView } from "../components/StateViews";
+import { DocumentChecklist } from "../components/DocumentChecklist";
 import { useAuth } from "../context/AuthContext";
 import { useParameterList } from "../hooks/useParameterList";
 import { phoneError, emailError, birthDateError } from "../lib/validators";
@@ -450,6 +451,13 @@ export default function AssociateDetailPage() {
           )}
         </div>
       </div>
+
+      <DocumentChecklist
+        title="Documentos del asociado"
+        path={`/associates/${data.id}/documents`}
+        canEdit={hasPermission("associates:write")}
+        hint="Marque los documentos que la cooperativa tiene (en físico o digital). La lista se configura en Parámetros › documentos_asociado."
+      />
 
       <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
         <h2 className="mb-2 text-sm font-semibold text-slate-700">Créditos relacionados</h2>

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { pool } from "../../db/pool.js";
-import { associateSchema, associateStatusSchema, idParam, paginationQuery } from "../../shared/schemas.js";
+import { associateSchema, associateStatusSchema, documentCheckSchema, idParam, paginationQuery } from "../../shared/schemas.js";
+import { isKnownDocument, loadChecklist } from "../../utils/documentChecklist.js";
 import { asyncHandler, HttpError } from "../../middlewares/error.middleware.js";
 import { requireAuth, requirePermission } from "../../middlewares/auth.middleware.js";
 import { recordAudit } from "../audit/audit.service.js";
@@ -67,6 +68,46 @@ associatesRouter.get(
     );
 
     res.json({ ...associate, credits, activeAlerts: alerts });
+  })
+);
+
+// Lista de chequeo de documentos del asociado: cuáles tiene la cooperativa (los archivos no se suben).
+associatesRouter.get(
+  "/:id/documents",
+  asyncHandler(async (req, res) => {
+    const { id } = idParam.parse(req.params);
+    const [rows] = await pool.query<any[]>(`SELECT id FROM associates WHERE id = ?`, [id]);
+    if ((rows as any[]).length === 0) throw new HttpError(404, "Asociado no encontrado");
+    res.json({ data: await loadChecklist(pool, "associate_documents", "associate_id", id, "documentos_asociado") });
+  })
+);
+
+associatesRouter.put(
+  "/:id/documents",
+  requirePermission("associates:write"),
+  asyncHandler(async (req, res) => {
+    const { id } = idParam.parse(req.params);
+    const { documentType, held, notes } = documentCheckSchema.parse(req.body);
+    const [rows] = await pool.query<any[]>(`SELECT id FROM associates WHERE id = ?`, [id]);
+    if ((rows as any[]).length === 0) throw new HttpError(404, "Asociado no encontrado");
+    if (!(await isKnownDocument(pool, "associate_documents", "associate_id", id, "documentos_asociado", documentType))) {
+      throw new HttpError(400, "Ese documento no está en la lista de documentos del asociado (Parámetros)");
+    }
+    await pool.query(
+      `INSERT INTO associate_documents (associate_id, document_type, held, notes, checked_by, checked_at)
+       VALUES (?, ?, ?, ?, ?, NOW())
+       ON DUPLICATE KEY UPDATE held = VALUES(held), notes = VALUES(notes), checked_by = VALUES(checked_by), checked_at = NOW()`,
+      [id, documentType, held ? 1 : 0, notes || null, req.user!.id]
+    );
+    await recordAudit(pool, {
+      entity: "associate",
+      entityId: id,
+      action: "DOCUMENT_CHECK",
+      newValue: { documentType, held, notes },
+      userId: req.user!.id,
+      ipAddress: req.ip
+    });
+    res.json({ documentType, held });
   })
 );
 

@@ -16,6 +16,7 @@ interface Credit {
   legal_name: string | null;
   moraCode: string | null;
   moraLabel: string | null;
+  seller_name: string | null;
 }
 
 const MORA_BADGE_CLASS: Record<string, string> = {
@@ -34,12 +35,18 @@ export default function CreditsPage() {
   const [search, setSearch] = useState("");
   const term = useDebounced(search.trim());
   const [page, setPage] = useState(1);
-  useEffect(() => setPage(1), [term]);
+  const [sellerId, setSellerId] = useState("");
+  useEffect(() => setPage(1), [term, sellerId]);
+  const { data: users } = useQuery({
+    queryKey: ["users"],
+    queryFn: () => api.get<{ data: Array<{ id: number; full_name: string }> }>("/users")
+  });
   const { data, isLoading, error } = useQuery({
-    queryKey: ["credits", term, page],
+    queryKey: ["credits", term, sellerId, page],
     queryFn: () => {
       const qs = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
       if (term) qs.set("search", term);
+      if (sellerId) qs.set("sellerId", sellerId);
       return api.get<{ data: Credit[]; total: number }>(`/credits?${qs}`);
     },
     placeholderData: (prev) => prev
@@ -54,6 +61,23 @@ export default function CreditsPage() {
         placeholder="Buscar por número de crédito, cédula o nombre del titular"
         label="Buscar créditos"
       />
+      <div className="mb-4 flex items-center gap-2 text-sm text-slate-600">
+        <label htmlFor="seller-filter">Asesor</label>
+        <select
+          id="seller-filter"
+          className="rounded-md border border-slate-300 px-2 py-1 text-sm"
+          value={sellerId}
+          onChange={(e) => setSellerId(e.target.value)}
+        >
+          <option value="">Todos</option>
+          <option value="none">Sin asesor</option>
+          {users?.data.map((u) => (
+            <option key={u.id} value={u.id}>
+              {u.full_name}
+            </option>
+          ))}
+        </select>
+      </div>
       {isLoading && <Loading />}
       {error && <ErrorView message={(error as Error).message} />}
       {data && data.data.length === 0 && (
@@ -94,6 +118,7 @@ export default function CreditsPage() {
                   <th className="px-4 py-2">Número</th>
                   <th className="px-4 py-2">Titular</th>
                   <th className="px-4 py-2">Saldo capital</th>
+                  <th className="px-4 py-2">Asesor</th>
                   <th className="px-4 py-2">Estado</th>
                   <th className="px-4 py-2">Mora</th>
                 </tr>
@@ -110,6 +135,7 @@ export default function CreditsPage() {
                       {c.first_name ? `${c.first_name} ${c.last_name}` : c.legal_name ?? "—"}
                     </td>
                     <td className="whitespace-nowrap px-4 py-2">{formatCurrency(c.principal_balance)}</td>
+                    <td className="px-4 py-2">{c.seller_name ?? "—"}</td>
                     <td className="px-4 py-2">
                       <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs">{c.status}</span>
                     </td>

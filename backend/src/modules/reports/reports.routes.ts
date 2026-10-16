@@ -89,6 +89,40 @@ reportsRouter.get(
 );
 
 /**
+ * Créditos por asesor (el asesor externo que vendió el crédito): cuántos créditos, cuánto se desembolsó,
+ * saldo de capital vigente y cuántos están en mora. "Sin asesor" agrupa los que no tienen uno asignado.
+ * Igual para todos los usuarios con reports:read, por eso se cachea como los demás reportes.
+ */
+reportsRouter.get(
+  "/by-seller",
+  reportCache.middleware(),
+  asyncHandler(async (_req, res) => {
+    const [rows] = await pool.query<any[]>(
+      `SELECT c.assigned_seller_id AS seller_id, COALESCE(u.full_name, 'Sin asesor') AS seller_name,
+              COUNT(*) AS credits,
+              SUM(c.disbursed_amount) AS disbursed_amount,
+              SUM(CASE WHEN c.status IN ('VIGENTE','EN_MORA') THEN c.principal_balance ELSE 0 END) AS outstanding_principal,
+              SUM(CASE WHEN c.status = 'EN_MORA' THEN 1 ELSE 0 END) AS credits_in_arrears
+       FROM credits c
+       LEFT JOIN users u ON u.id = c.assigned_seller_id
+       WHERE c.status <> 'ANULADO'
+       GROUP BY c.assigned_seller_id, u.full_name
+       ORDER BY disbursed_amount DESC`
+    );
+    res.json({
+      data: (rows as any[]).map((r) => ({
+        sellerId: r.seller_id,
+        sellerName: r.seller_name,
+        credits: Number(r.credits),
+        disbursedAmount: Number(r.disbursed_amount),
+        outstandingPrincipal: Number(r.outstanding_principal),
+        creditsInArrears: Number(r.credits_in_arrears)
+      }))
+    });
+  })
+);
+
+/**
  * Mora por bucket de días (30/60/90/120/150/180), igual a la clasificación
  * "CÓDIGO DE MORA" del Excel real de la cooperativa. Equivalente a las
  * columnas "Cuotas en mora" / "Mora al cierre del mes" de su informe

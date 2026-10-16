@@ -415,7 +415,7 @@ export default function UsersPage() {
       <div>
         <h1 className="mb-1 text-xl font-semibold text-slate-800">Usuarios del sistema</h1>
         <p className="text-sm text-slate-400">
-          Un "Gestor de cartera" o "Vendedor" asignable a un crédito es un usuario del sistema — créelo aquí para
+          Un "Gestor de cartera" o "Asesor" asignable a un crédito es un usuario del sistema — créelo aquí para
           poder seleccionarlo luego en el desembolso.
         </p>
       </div>
@@ -552,7 +552,7 @@ export default function UsersPage() {
 
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
-              Roles (opcional — déjelo vacío si solo será asignado como gestor/vendedor, sin acceso al sistema)
+              Roles (opcional — déjelo vacío si solo será asignado como gestor/asesor, sin acceso al sistema)
             </label>
             <div className="flex flex-wrap gap-3">
               {roles?.data.map((r) => (

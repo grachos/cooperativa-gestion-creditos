@@ -58,13 +58,15 @@ Nota: "negociar mora/descuentos" queda cubierto por `adjustments:write` hasta la
    - Reporte "Actividad por usuario" filtrable por usuario, acción y fechas, exportable a CSV.
    - Incluir verificación de referencias (contactada sí/no, resultado positivo/negativo, quién).
 
-## Fase 3 — Asesores externos
+## Fase 3 — Asesores externos — IMPLEMENTADA (2026-10-16)
 
 8. Hoy el "vendedor" de un crédito es un usuario sin roles (no entra al sistema), lo que ya cumple
    la idea. Falta: llamarlo **Asesor**, poder asignarlo **al radicar la solicitud** (hoy solo en el crédito)
    y un filtro/reporte de créditos por asesor.
 
-## Fase 4 — Documentos físicos y módulo jurídico
+## Fase 4 — Documentos físicos y módulo jurídico — IMPLEMENTADA (2026-10-16)
+
+Nota: las categorías de documentos de la solicitud (titular/codeudor) se hicieron en la Fase 1; aquí quedan las del asociado y las del cobro jurídico. Las listas iniciales son una propuesta a confirmar con la cooperativa.
 
 9. **Categorías de documentos parametrizables:** además de las de solicitud (titular/codeudor, Fase 1), las del asociado y las de cobro jurídico.
 10. **Documentos del asociado:** lista de chequeo "lo tenemos en físico: sí/no" (cédula, certificación

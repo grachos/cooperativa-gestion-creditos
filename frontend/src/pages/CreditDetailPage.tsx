@@ -6,6 +6,7 @@ import { useIdempotentSubmit } from "../hooks/useIdempotentSubmit";
 import { formatCurrency, formatDate, formatPercent } from "../lib/format";
 import { Loading, ErrorView } from "../components/StateViews";
 import { useAuth } from "../context/AuthContext";
+import { DocumentChecklist } from "../components/DocumentChecklist";
 import { useParameterList } from "../hooks/useParameterList";
 
 const DEFAULT_PAYMENT_METHODS = ["EFECTIVO", "TRANSFERENCIA", "CONSIGNACION", "DESCUENTO_NOMINA"];
@@ -116,7 +117,7 @@ export default function CreditDetailPage() {
         )}
       </p>
       <p className="mb-4 text-sm text-slate-400">
-        Gestor: {data.collector_name ?? "Sin asignar"} · Vendedor: {data.seller_name ?? "Sin asignar"} · Desembolsó: {data.disbursed_by_name ?? "—"}
+        Gestor: {data.collector_name ?? "Sin asignar"} · Asesor: {data.seller_name ?? "Sin asignar"} · Desembolsó: {data.disbursed_by_name ?? "—"}
         {data.refinanced_from_credit_number && <> · Refinanció a {data.refinanced_from_credit_number}</>}
         {data.refinanced_to_credit_number && <> · Refinanciado en {data.refinanced_to_credit_number}</>}
       </p>
@@ -237,11 +238,11 @@ export default function CreditDetailPage() {
 
       <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
         <h2 className="mb-2 text-sm font-semibold text-slate-700">Compromisos de pago</h2>
-        {data.collectionActions.length === 0 ? (
+        {data.collectionActions.filter((c) => c.promise_date).length === 0 ? (
           <p className="mb-3 text-sm text-slate-400">Sin compromisos registrados.</p>
         ) : (
           <ul className="mb-3 space-y-1 text-sm text-slate-600">
-            {data.collectionActions.map((c) => (
+            {data.collectionActions.filter((c) => c.promise_date).map((c) => (
               <li key={c.id} className="flex items-center justify-between">
                 <span>
                   {formatDate(c.promise_date)}: {c.description ?? "Compromiso de pago"}{" "}
@@ -263,6 +264,13 @@ export default function CreditDetailPage() {
           <PromiseForm creditId={data.id} onCreated={() => void queryClient.invalidateQueries({ queryKey: ["credit", id] })} />
         )}
       </div>
+
+      <LegalSection
+        creditId={data.id}
+        actions={data.collectionActions.filter((c) => !c.promise_date)}
+        canEdit={hasPermission("collections:write")}
+        onChanged={() => void queryClient.invalidateQueries({ queryKey: ["credit", id] })}
+      />
 
       <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
         <h2 className="mb-2 text-sm font-semibold text-slate-700">Ajustes del crédito</h2>
@@ -481,6 +489,113 @@ function VerifiedCell({ payment, canEdit, onDone }: { payment: Payment; canEdit:
         </button>
       )}
     </span>
+  );
+}
+
+const ACTION_LABELS: Record<string, string> = {
+  NOTIFICACION: "Notificación",
+  GESTION_COBRO: "Gestión de cobro",
+  PREPARACION_JURIDICA: "Preparación jurídica"
+};
+
+/** Cobro jurídico: documentos que se tienen y bitácora de gestiones de cobro del crédito. */
+function LegalSection({
+  creditId,
+  actions,
+  canEdit,
+  onChanged
+}: {
+  creditId: number;
+  actions: CollectionAction[];
+  canEdit: boolean;
+  onChanged: () => void;
+}) {
+  const [actionType, setActionType] = useState("GESTION_COBRO");
+  const [description, setDescription] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const { submit, pending } = useIdempotentSubmit(`action:${creditId}`);
+
+  async function add(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const payload = { actionType, description };
+    try {
+      const out = await submit(payload, (idempotencyKey) =>
+        api.post(`/credits/${creditId}/actions`, payload, { idempotencyKey })
+      );
+      if (!out.ran) return;
+      setDescription("");
+      onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo registrar la gestión");
+    }
+  }
+
+  async function complete(actionId: number) {
+    try {
+      await api.post(`/credits/actions/${actionId}/complete`);
+      onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo completar la gestión");
+    }
+  }
+
+  return (
+    <>
+      <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
+        <h2 className="mb-2 text-sm font-semibold text-slate-700">Gestiones de cobro y cobro jurídico</h2>
+        {actions.length === 0 ? (
+          <p className="mb-3 text-sm text-slate-400">Sin gestiones registradas.</p>
+        ) : (
+          <ul className="mb-3 space-y-1 text-sm text-slate-600">
+            {actions.map((a) => (
+              <li key={a.id} className="flex items-center justify-between gap-2">
+                <span>
+                  {formatDate(a.created_at)} · {ACTION_LABELS[a.action_type] ?? a.action_type}: {a.description}{" "}
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs">{a.status}</span>
+                  {a.created_by_name && <span className="block text-xs text-slate-400">Registró: {a.created_by_name}</span>}
+                </span>
+                {canEdit && a.status !== "COMPLETADA" && (
+                  <button type="button" onClick={() => void complete(a.id)} className="shrink-0 text-xs text-brand-700 hover:underline">
+                    Marcar completada
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        {error && <p className="mb-2 rounded-md bg-red-50 p-2 text-sm text-red-700">{error}</p>}
+        {canEdit && (
+          <form onSubmit={add} className="flex flex-col gap-2 sm:flex-row">
+            <select className="rounded-md border border-slate-300 px-3 py-2 text-sm" value={actionType} onChange={(e) => setActionType(e.target.value)}>
+              {Object.entries(ACTION_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+            <input
+              className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
+              required
+              minLength={3}
+              maxLength={255}
+              placeholder="Qué se hizo o se hará"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+            <button type="submit" disabled={pending} className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-60">
+              {pending ? "Registrando..." : "Registrar gestión"}
+            </button>
+          </form>
+        )}
+      </div>
+      <DocumentChecklist
+        title="Documentos del cobro jurídico"
+        path={`/credits/${creditId}/legal-documents`}
+        canEdit={canEdit}
+        hint="Marque los documentos que la cooperativa tiene. La lista se configura en Parámetros › documentos_juridicos."
+      />
+    </>
   );
 }
 

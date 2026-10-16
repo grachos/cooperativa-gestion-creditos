@@ -19,13 +19,18 @@ export default function NewApplicationPage() {
     queryFn: () => api.get<{ data: AssociateOption[] }>("/associates?pageSize=100&selectable=true")
   });
   const defaultMonthlyRate = useDefaultMonthlyRate();
+  const { data: users } = useQuery({
+    queryKey: ["users"],
+    queryFn: () => api.get<{ data: Array<{ id: number; full_name: string }> }>("/users")
+  });
 
   const [form, setForm] = useState({
     titularAssociateId: "",
     coDebtorAssociateIds: [] as string[],
     requestedAmount: "",
     termValue: "12",
-    purpose: ""
+    purpose: "",
+    assignedSellerId: ""
   });
   const [error, setError] = useState<string | null>(null);
   const { submit, pending: pendingSubmit } = useIdempotentSubmit("application:new");
@@ -46,7 +51,8 @@ export default function NewApplicationPage() {
       requestedAmount: Number(form.requestedAmount),
       termValue: Number(form.termValue),
       interestRate: defaultMonthlyRate,
-      purpose: form.purpose || undefined
+      purpose: form.purpose || undefined,
+      assignedSellerId: form.assignedSellerId ? Number(form.assignedSellerId) : undefined
     };
     try {
       const out = await submit(payload, (idempotencyKey) =>
@@ -187,6 +193,22 @@ export default function NewApplicationPage() {
             value={form.purpose}
             onChange={(e) => setForm({ ...form, purpose: e.target.value })}
           />
+        </div>
+
+        <div>
+          <label className="mb-1 block text-sm font-medium text-slate-700">Asesor que vendió el crédito</label>
+          <select
+            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            value={form.assignedSellerId}
+            onChange={(e) => setForm({ ...form, assignedSellerId: e.target.value })}
+          >
+            <option value="">Sin asesor</option>
+            {users?.data.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.full_name}
+              </option>
+            ))}
+          </select>
         </div>
 
         <button

@@ -51,6 +51,8 @@ interface ApplicationDetail {
   rejection_reason: string | null;
   participants: ApplicationParticipant[];
   documents: ApplicationDocument[];
+  seller_name: string | null;
+  assigned_seller_id: number | null;
   created_by_name: string | null;
   created_at: string;
   decided_by_name: string | null;
@@ -294,6 +296,7 @@ export default function ApplicationDetailPage() {
         <p className="text-sm text-slate-600">Plazo: {data.term_value} meses</p>
         <p className="text-sm text-slate-600">Tasa mensual: {formatPercent(data.interest_rate)}</p>
         <p className="text-sm text-slate-600">Destino: {data.purpose ?? "—"}</p>
+        <p className="text-sm text-slate-600">Asesor: {data.seller_name ?? "Sin asesor"}</p>
       </div>
 
       {data.participants.map((p) => {
@@ -449,13 +452,13 @@ export default function ApplicationDetailPage() {
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-xs text-slate-500">Vendedor</label>
+              <label className="mb-1 block text-xs text-slate-500">Asesor (por defecto el de la solicitud)</label>
               <select
                 className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
                 value={assignedSellerId}
                 onChange={(e) => setAssignedSellerId(e.target.value)}
               >
-                <option value="">Sin asignar</option>
+                <option value="">{data.seller_name ? `El de la solicitud (${data.seller_name})` : "Sin asesor"}</option>
                 {users?.data.map((u) => (
                   <option key={u.id} value={u.id}>
                     {u.full_name}

@@ -115,8 +115,9 @@ applicationsRouter.get(
   asyncHandler(async (req, res) => {
     const { id } = idParam.parse(req.params);
     const [rows] = await pool.query<any[]>(
-      `SELECT ca.*, cu.full_name AS created_by_name, du.full_name AS decided_by_name
+      `SELECT ca.*, cu.full_name AS created_by_name, du.full_name AS decided_by_name, sel.full_name AS seller_name
        FROM credit_applications ca
+       LEFT JOIN users sel ON sel.id = ca.assigned_seller_id
        LEFT JOIN users cu ON cu.id = ca.created_by
        LEFT JOIN users du ON du.id = ca.decided_by
        WHERE ca.id = ?`,
@@ -268,10 +269,15 @@ applicationsRouter.post(
       throw new HttpError(400, "Debe indicar un titular (asociado o sociedad)");
     }
 
+    if (data.assignedSellerId) {
+      const [sellerRows] = await pool.query<any[]>(`SELECT id FROM users WHERE id = ? AND status = 'ACTIVO'`, [data.assignedSellerId]);
+      if ((sellerRows as any[]).length === 0) throw new HttpError(400, "El asesor indicado no existe o está inactivo");
+    }
+
     const [result] = await pool.query<any>(
       `INSERT INTO credit_applications
-        (titular_associate_id, titular_society_id, requested_amount, term_value, interest_rate, rate_type, expected_disbursement_date, due_day_rule, purpose, notes, status, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'RADICADA', ?)`,
+        (titular_associate_id, titular_society_id, requested_amount, term_value, interest_rate, rate_type, expected_disbursement_date, due_day_rule, purpose, notes, assigned_seller_id, status, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'RADICADA', ?)`,
       [
         data.titularAssociateId ?? null,
         data.titularSocietyId ?? null,
@@ -283,6 +289,7 @@ applicationsRouter.post(
         data.dueDayRule ?? null,
         data.purpose ?? null,
         data.notes ?? null,
+        data.assignedSellerId ?? null,
         req.user!.id
       ]
     );

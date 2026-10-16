@@ -506,6 +506,26 @@ Migración `024_reunion_fase2.sql` y permiso nuevo en `seed_base.sql` (corre en 
   (hasta 50.000 filas). Nuevo índice `(user_id, created_at)` en `audit_logs`.
 - Los nombres de los permisos en español están en `frontend/src/lib/permissions.ts`.
 
+## Cambios de la reunión con la cooperativa (2026-10-16) — Fases 3 y 4
+
+Migración `025_reunion_fase3_4.sql`.
+
+- **Asesor** (antes "vendedor"; es un usuario sin acceso al sistema): se elige al radicar la solicitud
+  (`assignedSellerId` en `POST /applications`), se hereda al crédito al desembolsar (el desembolso puede
+  cambiarlo) y se muestra en solicitud, crédito y listado. `GET /credits?sellerId=<id|none>` filtra por
+  asesor y `GET /reports/by-seller` (pestaña Reportes › Por asesor, con caché como los demás) da créditos,
+  desembolsado, saldo de capital y créditos en mora por asesor.
+- **Documentos del asociado:** parámetro `documentos_asociado`; en la ficha del asociado se marca "lo tenemos /
+  no lo tenemos" por documento con nota, quién y cuándo (`GET/PUT /associates/:id/documents`, permiso
+  `associates:write`).
+- **Cobro jurídico** (en el detalle del crédito): parámetro `documentos_juridicos` con la misma lista de chequeo
+  (`GET/PUT /credits/:id/legal-documents`) y bitácora de gestiones (`POST /credits/:id/actions` con tipo
+  notificación / gestión de cobro / preparación jurídica; `POST /credits/actions/:id/complete`). Permiso
+  `collections:write`. Los compromisos de pago siguen en su propia sección.
+- Las listas iniciales de documentos del asociado y jurídicos son una propuesta: ajustarlas en Parámetros.
+- Los archivos no se suben al servidor; solo se deja constancia de si el documento está en poder de la
+  cooperativa (decisión de la reunión, por el costo de almacenamiento).
+
 ## Escalabilidad y concurrencia
 
 Diagnóstico de escalabilidad, cambios realizados, mediciones y pendientes:

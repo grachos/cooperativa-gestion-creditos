@@ -59,6 +59,8 @@ export const creditApplicationSchema = z.object({
   titularAssociateId: z.coerce.number().int().positive().optional().nullable(),
   titularSocietyId: z.coerce.number().int().positive().optional().nullable(),
   coDebtorAssociateIds: z.array(z.coerce.number().int().positive()).optional(),
+  // Asesor externo que vendió el crédito (usuario sin acceso al sistema). Opcional.
+  assignedSellerId: z.coerce.number().int().positive().optional().nullable(),
   requestedAmount: z.coerce.number().positive(),
   termValue: z.coerce.number().int().positive(),
   interestRate: z.coerce.number().positive(),
@@ -130,6 +132,17 @@ export const paymentSchema = z.object({
   notes: z.string().max(255).optional().nullable(),
   // El pago se verificó en el banco y su soporte quedó archivado.
   verified: z.boolean().optional().default(false)
+});
+
+export const documentCheckSchema = z.object({
+  documentType: z.string().trim().min(1).max(120),
+  held: z.boolean(),
+  notes: z.string().trim().max(255).optional().nullable()
+});
+
+export const collectionActionSchema = z.object({
+  actionType: z.enum(["NOTIFICACION", "GESTION_COBRO", "PREPARACION_JURIDICA"]),
+  description: z.string().trim().min(3).max(255)
 });
 
 export const reversalSchema = z.object({

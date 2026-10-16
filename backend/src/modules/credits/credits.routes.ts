@@ -65,7 +65,7 @@ creditsRouter.post(
           app.titular_associate_id,
           app.titular_society_id,
           assignedCollectorId ?? null,
-          assignedSellerId ?? null,
+          assignedSellerId ?? app.assigned_seller_id ?? null,
           app.requested_amount,
           app.requested_amount,
           app.interest_rate,
@@ -156,6 +156,7 @@ creditsRouter.get(
     const { page, pageSize } = paginationQuery.parse(req.query);
     const status = req.query.status as string | undefined;
     const search = (req.query.search as string | undefined)?.trim().slice(0, 80);
+    const sellerFilter = req.query.sellerId as string | undefined; // id de asesor o "none" (sin asesor)
     const offset = (page - 1) * pageSize;
 
     // Búsqueda por número de crédito, cédula/NIT (prefijo), nombre del titular o razón social.
@@ -164,6 +165,14 @@ creditsRouter.get(
     if (status) {
       conditions.push(`c.status = ?`);
       args.push(status);
+    }
+    if (sellerFilter === "none") {
+      conditions.push(`c.assigned_seller_id IS NULL`);
+    } else if (sellerFilter) {
+      const sellerId = Number(sellerFilter);
+      if (!Number.isInteger(sellerId) || sellerId <= 0) throw new HttpError(400, "Asesor inválido");
+      conditions.push(`c.assigned_seller_id = ?`);
+      args.push(sellerId);
     }
     if (search) {
       conditions.push(
@@ -174,10 +183,11 @@ creditsRouter.get(
     const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
     const fromJoin = `FROM credits c
        LEFT JOIN associates a ON a.id = c.titular_associate_id
-       LEFT JOIN societies s ON s.id = c.titular_society_id`;
+       LEFT JOIN societies s ON s.id = c.titular_society_id
+       LEFT JOIN users sel ON sel.id = c.assigned_seller_id`;
 
     const [rows] = await pool.query<any[]>(
-      `SELECT c.*, a.first_name, a.last_name, a.id_number, s.legal_name,
+      `SELECT c.*, a.first_name, a.last_name, a.id_number, s.legal_name, sel.full_name AS seller_name,
               (SELECT MAX(GREATEST(DATEDIFF(CURRENT_DATE, csi.due_date), 0))
                FROM credit_schedule_installments csi
                WHERE csi.credit_id = c.id AND csi.status NOT IN ('PAGADA','ANULADA')) AS max_overdue_days
