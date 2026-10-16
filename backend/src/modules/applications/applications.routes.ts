@@ -114,34 +114,53 @@ applicationsRouter.get(
   "/:id",
   asyncHandler(async (req, res) => {
     const { id } = idParam.parse(req.params);
-    const [rows] = await pool.query<any[]>(`SELECT * FROM credit_applications WHERE id = ?`, [id]);
+    const [rows] = await pool.query<any[]>(
+      `SELECT ca.*, cu.full_name AS created_by_name, du.full_name AS decided_by_name
+       FROM credit_applications ca
+       LEFT JOIN users cu ON cu.id = ca.created_by
+       LEFT JOIN users du ON du.id = ca.decided_by
+       WHERE ca.id = ?`,
+      [id]
+    );
     const application = (rows as any[])[0];
     if (!application) throw new HttpError(404, "Solicitud no encontrada");
 
     await ensureRequiredDocuments(id);
 
+    // Trazabilidad: cada revisión, decisión y cambio de estado muestra quién lo hizo.
     const [participants] = await pool.query<any[]>(
-      `SELECT cp.*, a.first_name, a.last_name FROM credit_participants cp
+      `SELECT cp.*, a.first_name, a.last_name, ru.full_name AS reviewed_by_name FROM credit_participants cp
        LEFT JOIN associates a ON a.id = cp.associate_id
+       LEFT JOIN users ru ON ru.id = cp.reviewed_by
        WHERE cp.credit_application_id = ?`,
       [id]
     );
     const [documents] = await pool.query<any[]>(
-      `SELECT * FROM credit_application_documents WHERE credit_application_id = ? ORDER BY id ASC`,
+      `SELECT d.*, ru.full_name AS reviewed_by_name FROM credit_application_documents d
+       LEFT JOIN users ru ON ru.id = d.reviewed_by
+       WHERE d.credit_application_id = ? ORDER BY d.id ASC`,
       [id]
     );
     const [history] = await pool.query<any[]>(
-      `SELECT * FROM credit_application_status_history WHERE credit_application_id = ? ORDER BY created_at ASC`,
+      `SELECT h.*, u.full_name AS user_name FROM credit_application_status_history h
+       LEFT JOIN users u ON u.id = h.user_id
+       WHERE h.credit_application_id = ? ORDER BY h.created_at ASC, h.id ASC`,
+      [id]
+    );
+    const [references] = await pool.query<any[]>(
+      `SELECT r.*, u.full_name AS checked_by_name FROM application_reference_checks r
+       LEFT JOIN users u ON u.id = r.checked_by
+       WHERE r.credit_application_id = ? ORDER BY r.id ASC`,
       [id]
     );
 
-    res.json({ ...application, participants, documents, history });
+    res.json({ ...application, participants, documents, history, references });
   })
 );
 
 applicationsRouter.put(
   "/:id/documents/:documentId",
-  requirePermission("applications:approve"),
+  requirePermission("applications:review"),
   asyncHandler(async (req, res) => {
     const { id } = idParam.parse(req.params);
     const documentId = z.coerce.number().int().positive().parse(req.params.documentId);
@@ -165,13 +184,21 @@ applicationsRouter.put(
       [status, notes ?? null, req.user!.id, documentId]
     );
 
+    await recordAudit(pool, {
+      entity: "credit_application",
+      entityId: id,
+      action: "DOCUMENT_REVIEW",
+      newValue: { documentId, documentType: (docRows as any[])[0].document_type, status, notes },
+      userId: req.user!.id,
+      ipAddress: req.ip
+    });
     res.json({ id: documentId, status });
   })
 );
 
 applicationsRouter.put(
   "/:id/participants/:participantId",
-  requirePermission("applications:approve"),
+  requirePermission("applications:review"),
   asyncHandler(async (req, res) => {
     const { id } = idParam.parse(req.params);
     const participantId = z.coerce.number().int().positive().parse(req.params.participantId);
@@ -219,6 +246,14 @@ applicationsRouter.put(
       }
     }
 
+    await recordAudit(pool, {
+      entity: "credit_application",
+      entityId: id,
+      action: "PARTICIPANT_REVIEW",
+      newValue: { participantId, role: participant.role, status, notes },
+      userId: req.user!.id,
+      ipAddress: req.ip
+    });
     res.json({ id: participantId, status });
   })
 );
@@ -280,9 +315,83 @@ applicationsRouter.post(
   })
 );
 
+const referenceSchema = z.object({
+  referenceType: z.enum(["PERSONAL", "LABORAL"]),
+  referenceName: z.string().trim().min(2).max(160),
+  phone: z.string().trim().max(40).optional().nullable(),
+  contacted: z.boolean().default(false),
+  result: z.enum(["POSITIVA", "NEGATIVA", "SIN_RESPUESTA"]).optional().nullable(),
+  notes: z.string().trim().max(500).optional().nullable()
+});
+
+// Verificación de referencias: quién las llamó, si contestaron y si fueron positivas o negativas.
+async function loadOpenApplication(id: number) {
+  const [rows] = await pool.query<any[]>(`SELECT status FROM credit_applications WHERE id = ?`, [id]);
+  const app = (rows as any[])[0];
+  if (!app) throw new HttpError(404, "Solicitud no encontrada");
+  if (!["RADICADA", "EN_REVISION"].includes(app.status)) {
+    throw new HttpError(409, "La solicitud no está en un estado que permita verificar referencias");
+  }
+}
+
+applicationsRouter.post(
+  "/:id/references",
+  requirePermission("applications:review"),
+  idempotent("applications.reference"),
+  asyncHandler(async (req, res) => {
+    const { id } = idParam.parse(req.params);
+    const data = referenceSchema.parse(req.body);
+    if (data.contacted && !data.result) throw new HttpError(400, "Indique el resultado de la verificación");
+    await loadOpenApplication(id);
+    const [result] = await pool.query<any>(
+      `INSERT INTO application_reference_checks
+         (credit_application_id, reference_type, reference_name, phone, contacted, result, notes, checked_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, data.referenceType, data.referenceName, data.phone || null, data.contacted ? 1 : 0, data.contacted ? data.result : null, data.notes || null, req.user!.id]
+    );
+    await recordAudit(pool, {
+      entity: "credit_application",
+      entityId: id,
+      action: "REFERENCE_CHECK",
+      newValue: { referenceId: result.insertId, ...data },
+      userId: req.user!.id,
+      ipAddress: req.ip
+    });
+    res.status(201).json({ id: result.insertId });
+  })
+);
+
+applicationsRouter.put(
+  "/:id/references/:referenceId",
+  requirePermission("applications:review"),
+  asyncHandler(async (req, res) => {
+    const { id } = idParam.parse(req.params);
+    const referenceId = z.coerce.number().int().positive().parse(req.params.referenceId);
+    const data = referenceSchema.parse(req.body);
+    if (data.contacted && !data.result) throw new HttpError(400, "Indique el resultado de la verificación");
+    await loadOpenApplication(id);
+    const [result] = await pool.query<any>(
+      `UPDATE application_reference_checks
+       SET reference_type = ?, reference_name = ?, phone = ?, contacted = ?, result = ?, notes = ?, checked_by = ?
+       WHERE id = ? AND credit_application_id = ?`,
+      [data.referenceType, data.referenceName, data.phone || null, data.contacted ? 1 : 0, data.contacted ? data.result : null, data.notes || null, req.user!.id, referenceId, id]
+    );
+    if (!result.affectedRows) throw new HttpError(404, "Referencia no encontrada");
+    await recordAudit(pool, {
+      entity: "credit_application",
+      entityId: id,
+      action: "REFERENCE_CHECK",
+      newValue: { referenceId, ...data },
+      userId: req.user!.id,
+      ipAddress: req.ip
+    });
+    res.json({ id: referenceId });
+  })
+);
+
 applicationsRouter.post(
   "/:id/review",
-  requirePermission("applications:approve"),
+  requirePermission("applications:review"),
   asyncHandler(async (req, res) => {
     const { id } = idParam.parse(req.params);
     const [rows] = await pool.query<any[]>(`SELECT status FROM credit_applications WHERE id = ?`, [id]);
@@ -291,6 +400,13 @@ applicationsRouter.post(
     if (app.status !== "RADICADA") throw new HttpError(409, "La solicitud no está en estado radicada");
 
     await transition(id, app.status, "EN_REVISION", req.user!.id, "Inicio de revisión");
+    await recordAudit(pool, {
+      entity: "credit_application",
+      entityId: id,
+      action: "REVIEW_START",
+      userId: req.user!.id,
+      ipAddress: req.ip
+    });
     res.json({ id, status: "EN_REVISION" });
   })
 );

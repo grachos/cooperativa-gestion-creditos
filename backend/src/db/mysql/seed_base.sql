@@ -28,6 +28,7 @@ INSERT INTO permissions (code, description) VALUES
   ('associates:write', NULL),
   ('applications:write', NULL),
   ('applications:approve', NULL),
+  ('applications:review', 'Revisar solicitudes: iniciar revisión, verificar documentos, participantes y referencias'),
   ('disbursements:write', NULL),
   ('payments:write', NULL),
   ('alerts:write', NULL),
@@ -42,11 +43,11 @@ ON DUPLICATE KEY UPDATE code = code;
 
 -- Permisos por rol
 INSERT IGNORE INTO role_permissions (role_id, permission_id)
-SELECT r.id, p.id FROM roles r JOIN permissions p ON p.code IN ('adjustments:write', 'alerts:write', 'applications:approve', 'applications:write', 'associates:write', 'audit:read', 'collections:write', 'disbursements:write', 'integration:write', 'parameters:write', 'payments:write', 'reports:read', 'users:write')
+SELECT r.id, p.id FROM roles r JOIN permissions p ON p.code IN ('adjustments:write', 'alerts:write', 'applications:approve', 'applications:review', 'applications:write', 'associates:write', 'audit:read', 'collections:write', 'disbursements:write', 'integration:write', 'parameters:write', 'payments:write', 'reports:read', 'users:write')
 WHERE r.code = 'ADMIN';
 
 INSERT IGNORE INTO role_permissions (role_id, permission_id)
-SELECT r.id, p.id FROM roles r JOIN permissions p ON p.code IN ('adjustments:write', 'applications:approve', 'disbursements:write', 'reports:read')
+SELECT r.id, p.id FROM roles r JOIN permissions p ON p.code IN ('adjustments:write', 'applications:approve', 'applications:review', 'disbursements:write', 'reports:read')
 WHERE r.code = 'APROBADOR';
 
 INSERT IGNORE INTO role_permissions (role_id, permission_id)

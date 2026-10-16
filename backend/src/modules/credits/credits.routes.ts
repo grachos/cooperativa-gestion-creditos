@@ -200,11 +200,12 @@ creditsRouter.get(
   asyncHandler(async (req, res) => {
     const { id } = idParam.parse(req.params);
     const [rows] = await pool.query<any[]>(
-      `SELECT c.*, col.full_name AS collector_name, sel.full_name AS seller_name,
+      `SELECT c.*, col.full_name AS collector_name, sel.full_name AS seller_name, dis.full_name AS disbursed_by_name,
               rf.credit_number AS refinanced_from_credit_number, rt.credit_number AS refinanced_to_credit_number
        FROM credits c
        LEFT JOIN users col ON col.id = c.assigned_collector_id
        LEFT JOIN users sel ON sel.id = c.assigned_seller_id
+       LEFT JOIN users dis ON dis.id = c.created_by
        LEFT JOIN credits rf ON rf.id = c.refinanced_from_credit_id
        LEFT JOIN credits rt ON rt.id = c.refinanced_to_credit_id
        WHERE c.id = ?`,
@@ -234,8 +235,9 @@ creditsRouter.get(
       return { ...row, payments_count: Number(v?.payments_count ?? 0), unverified_payments: Number(v?.unverified_payments ?? 0) };
     });
     const [payments] = await pool.query<any[]>(
-      `SELECT p.*, vu.full_name AS verified_by_name FROM payments p
+      `SELECT p.*, vu.full_name AS verified_by_name, cu.full_name AS created_by_name FROM payments p
        LEFT JOIN users vu ON vu.id = p.verified_by
+       LEFT JOIN users cu ON cu.id = p.created_by
        WHERE p.credit_id = ? ORDER BY p.received_date DESC`,
       [id]
     );
@@ -256,7 +258,9 @@ creditsRouter.get(
       [id]
     );
     const [collectionActions] = await pool.query<any[]>(
-      `SELECT * FROM collection_actions WHERE credit_id = ? ORDER BY created_at DESC`,
+      `SELECT ca.*, u.full_name AS created_by_name FROM collection_actions ca
+       LEFT JOIN users u ON u.id = ca.created_by
+       WHERE ca.credit_id = ? ORDER BY ca.created_at DESC`,
       [id]
     );
 

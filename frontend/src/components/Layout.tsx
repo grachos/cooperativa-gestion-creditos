@@ -9,6 +9,7 @@ import {
   BarChart3,
   Settings,
   UserCog,
+  History,
   LogOut,
   X
 } from "lucide-react";
@@ -19,7 +20,7 @@ import { IdleTimeout } from "./IdleTimeout";
 
 const NOTIF_BANNER_DISMISSED_KEY = "notif_banner_dismissed";
 
-const NAV_ITEMS = [
+const NAV_ITEMS: Array<{ to: string; label: string; icon: typeof Users; permission?: string }> = [
   { to: "/", label: "Tablero", icon: LayoutDashboard },
   { to: "/asociados", label: "Asociados", icon: Users },
   { to: "/solicitudes", label: "Solicitudes", icon: FileText },
@@ -27,11 +28,13 @@ const NAV_ITEMS = [
   { to: "/alertas", label: "Alertas", icon: Bell },
   { to: "/reportes", label: "Reportes", icon: BarChart3 },
   { to: "/parametros", label: "Parámetros", icon: Settings },
-  { to: "/usuarios", label: "Usuarios", icon: UserCog }
+  { to: "/usuarios", label: "Usuarios", icon: UserCog },
+  { to: "/actividad", label: "Actividad", icon: History, permission: "audit:read" }
 ];
 
 export function Layout() {
-  const { user, logout, justLoggedIn, clearJustLoggedIn } = useAuth();
+  const { user, logout, justLoggedIn, clearJustLoggedIn, hasPermission } = useAuth();
+  const navItems = NAV_ITEMS.filter((item) => !item.permission || hasPermission(item.permission));
   const { permission, requestPermission } = useNotifications();
   const [bannerDismissed, setBannerDismissed] = useState(
     () => localStorage.getItem(NOTIF_BANNER_DISMISSED_KEY) === "1"
@@ -60,7 +63,7 @@ export function Layout() {
               <span className="text-lg font-semibold text-slate-800">Coomulnissi</span>
             </div>
             <nav className="flex flex-1 flex-col gap-1">
-              {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
+              {navItems.map(({ to, label, icon: Icon }) => (
                 <NavLink
                   key={to}
                   to={to}
@@ -133,7 +136,7 @@ export function Layout() {
               <Outlet />
             </main>
             <nav className="fixed inset-x-0 bottom-0 z-20 flex min-w-0 overflow-x-auto border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] md:hidden">
-              {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
+              {navItems.map(({ to, label, icon: Icon }) => (
                 <NavLink
                   key={to}
                   to={to}

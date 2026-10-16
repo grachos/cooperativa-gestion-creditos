@@ -43,7 +43,9 @@ Nota: la fecha de desembolso ya existía; se agregaron cuentas y soporte. La mar
      los obligatorios de todos los participantes deben estar revisados.
    - Las solicitudes ya existentes conservan su lista actual (no se reescribe el histórico).
 
-## Fase 2 — Permisos por acción y trazabilidad
+## Fase 2 — Permisos por acción y trazabilidad — IMPLEMENTADA (2026-10-16)
+
+Nota: "negociar mora/descuentos" queda cubierto por `adjustments:write` hasta la Fase 5; "desembolsar" por `disbursements:write`; "registrar pagos" por `payments:write`.
 
 6. **Permisos por usuario con casillas.** Hoy hay roles fijos (permisos como `applications:write`,
    `applications:approve`, `payments:write`). Falta:

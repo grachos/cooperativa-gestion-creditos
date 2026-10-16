@@ -480,6 +480,32 @@ Plan completo en `docs/plan-reunion-2026-10-16.md`. Migración `023_reunion_fase
 
 - **Cronograma de cuotas:** columna "Pago verificado" (por cuota: verificado, sin verificar o sin pagos).
 
+## Cambios de la reunión con la cooperativa (2026-10-16) — Fase 2
+
+Migración `024_reunion_fase2.sql` y permiso nuevo en `seed_base.sql` (corre en cada arranque).
+
+- **Permisos por usuario (casillas):** en Usuarios, cada persona tiene "Permisos (n)" con una casilla por
+  acción. Parte viene de su rol; lo que se agrega o quita se guarda como diferencia en `user_permissions`
+  (`granted` 1 = agrega, 0 = quita), así que un cambio posterior en un rol sigue aplicando. Endpoints (permiso
+  `users:write`): `GET /users/permissions`, `GET /users/manage` (ahora con `permissions` efectivos) y
+  `PUT /users/:id/permissions` (recibe la lista final). No se puede quitar a uno mismo `users:write`. El
+  cambio se invalida la sesión de esa persona: lo ve al volver a entrar o, como mucho, a los 15 min.
+- **Revisar vs. aprobar:** nuevo permiso `applications:review` (poner en revisión, revisar documentos y
+  participantes, verificar referencias). `applications:approve` queda solo para aprobar o rechazar. Los roles
+  Administrador y Aprobador tienen ambos, así que nada cambia para ellos; el Operador sigue sin poder revisar
+  salvo que se le marque la casilla.
+- **Referencias:** `POST/PUT /applications/:id/references` (personal o laboral, contactada o no, resultado
+  positiva/negativa/sin respuesta, observación, quién y cuándo). Solo mientras la solicitud está radicada o en
+  revisión. No es requisito para aprobar.
+- **Quién hizo qué:** el detalle de la solicitud muestra quién la radicó, quién revisó cada documento y
+  participante, quién la decidió y quién hizo cada cambio de estado; el crédito muestra quién desembolsó, quién
+  registró cada pago y cada compromiso. La revisión de documentos/participantes, el inicio de revisión y las
+  referencias ahora quedan en la auditoría.
+- **Actividad por usuario** (menú Actividad, permiso `audit:read`): `GET /audit` con filtros `userId`,
+  `action`, `entity`, `from`, `to` (devuelve `user_name`), `GET /audit/filters` y `GET /audit/export.csv`
+  (hasta 50.000 filas). Nuevo índice `(user_id, created_at)` en `audit_logs`.
+- Los nombres de los permisos en español están en `frontend/src/lib/permissions.ts`.
+
 ## Escalabilidad y concurrencia
 
 Diagnóstico de escalabilidad, cambios realizados, mediciones y pendientes:

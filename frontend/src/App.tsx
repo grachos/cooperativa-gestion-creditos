@@ -15,6 +15,7 @@ import AlertsPage from "./pages/AlertsPage";
 import ReportsPage from "./pages/ReportsPage";
 import ParametersPage from "./pages/ParametersPage";
 import UsersPage from "./pages/UsersPage";
+import ActivityPage from "./pages/ActivityPage";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -48,6 +49,7 @@ export default function App() {
         <Route path="reportes" element={<ReportsPage />} />
         <Route path="parametros" element={<ParametersPage />} />
         <Route path="usuarios" element={<UsersPage />} />
+        <Route path="actividad" element={<ActivityPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

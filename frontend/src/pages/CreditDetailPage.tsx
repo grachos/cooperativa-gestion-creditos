@@ -36,6 +36,7 @@ interface Payment {
   status: string;
   verified: boolean;
   verified_by_name: string | null;
+  created_by_name: string | null;
 }
 
 interface Adjustment {
@@ -53,6 +54,7 @@ interface CollectionAction {
   action_type: string;
   description: string | null;
   observation: string | null;
+  created_by_name: string | null;
   promise_date: string | null;
   promise_status: string | null;
   status: string;
@@ -61,6 +63,7 @@ interface CollectionAction {
 
 interface CreditDetail {
   id: number;
+  disbursed_by_name: string | null;
   disbursement_to_account: string | null;
   disbursement_from_account: string | null;
   disbursement_proof_filed: boolean;
@@ -113,7 +116,7 @@ export default function CreditDetailPage() {
         )}
       </p>
       <p className="mb-4 text-sm text-slate-400">
-        Gestor: {data.collector_name ?? "Sin asignar"} · Vendedor: {data.seller_name ?? "Sin asignar"}
+        Gestor: {data.collector_name ?? "Sin asignar"} · Vendedor: {data.seller_name ?? "Sin asignar"} · Desembolsó: {data.disbursed_by_name ?? "—"}
         {data.refinanced_from_credit_number && <> · Refinanció a {data.refinanced_from_credit_number}</>}
         {data.refinanced_to_credit_number && <> · Refinanciado en {data.refinanced_to_credit_number}</>}
       </p>
@@ -194,6 +197,7 @@ export default function CreditDetailPage() {
                 <th className="px-3 py-2">Fecha</th>
                 <th className="px-3 py-2">Valor</th>
                 <th className="px-3 py-2">Medio</th>
+                <th className="px-3 py-2">Registró</th>
                 <th className="px-3 py-2">Estado</th>
                 <th className="px-3 py-2">Verificado en banco</th>
                 {hasPermission("payments:write") && <th className="px-3 py-2" />}
@@ -205,6 +209,7 @@ export default function CreditDetailPage() {
                   <td className="px-3 py-2">{formatDate(p.received_date)}</td>
                   <td className="px-3 py-2">{formatCurrency(p.amount)}</td>
                   <td className="px-3 py-2">{p.payment_method}</td>
+                  <td className="px-3 py-2">{p.created_by_name ?? "—"}</td>
                   <td className="px-3 py-2">{p.status}</td>
                   <td className="px-3 py-2">
                     <VerifiedCell
@@ -242,6 +247,7 @@ export default function CreditDetailPage() {
                   {formatDate(c.promise_date)}: {c.description ?? "Compromiso de pago"}{" "}
                   <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs">{c.promise_status ?? c.status}</span>
                   {c.observation && <span className="block text-xs text-slate-500">Observación: {c.observation}</span>}
+                  {c.created_by_name && <span className="block text-xs text-slate-400">Registró: {c.created_by_name}</span>}
                 </span>
                 {hasPermission("collections:write") && c.promise_status === "PENDIENTE" && (
                   <ResolvePromiseButtons

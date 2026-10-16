@@ -7,6 +7,7 @@ const PERMISSIONS = [
   "associates:write",
   "applications:write",
   "applications:approve",
+  "applications:review",
   "disbursements:write",
   "payments:write",
   "alerts:write",
@@ -29,7 +30,7 @@ const ROLES: Record<string, string[]> = {
     "reports:read",
     "collections:write"
   ],
-  APROBADOR: ["applications:approve", "disbursements:write", "reports:read", "adjustments:write"],
+  APROBADOR: ["applications:approve", "applications:review", "disbursements:write", "reports:read", "adjustments:write"],
   CONTADORA: ["integration:write", "reports:read", "audit:read"],
   CONSULTA: ["reports:read"]
 };

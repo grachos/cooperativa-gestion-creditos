@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useIdempotentSubmit } from "../hooks/useIdempotentSubmit";
-import { formatCurrency, formatDate, formatPercent } from "../lib/format";
+import { formatCurrency, formatDateTime, formatPercent } from "../lib/format";
 import { Loading, ErrorView } from "../components/StateViews";
 import { useAuth } from "../context/AuthContext";
 import { useParameterList } from "../hooks/useParameterList";
@@ -12,6 +12,20 @@ interface ReviewItem {
   id: number;
   status: "PENDIENTE" | "APROBADO" | "RECHAZADO";
   notes: string | null;
+  reviewed_by_name?: string | null;
+  reviewed_at?: string | null;
+}
+
+interface ReferenceCheck {
+  id: number;
+  reference_type: "PERSONAL" | "LABORAL";
+  reference_name: string;
+  phone: string | null;
+  contacted: boolean;
+  result: "POSITIVA" | "NEGATIVA" | "SIN_RESPUESTA" | null;
+  notes: string | null;
+  checked_by_name: string | null;
+  checked_at: string;
 }
 
 interface ApplicationDocument extends ReviewItem {
@@ -37,7 +51,12 @@ interface ApplicationDetail {
   rejection_reason: string | null;
   participants: ApplicationParticipant[];
   documents: ApplicationDocument[];
-  history: Array<{ from_status: string | null; to_status: string; reason: string | null; created_at: string }>;
+  created_by_name: string | null;
+  created_at: string;
+  decided_by_name: string | null;
+  decided_at: string | null;
+  references: ReferenceCheck[];
+  history: Array<{ from_status: string | null; to_status: string; reason: string | null; created_at: string; user_name: string | null }>;
 }
 
 const REVIEW_STATUS_STYLES: Record<string, string> = {
@@ -89,6 +108,12 @@ function ReviewRow({
         </div>
       </div>
       {item.notes && !editing && <p className="mt-1 text-xs text-slate-400">Nota: {item.notes}</p>}
+      {item.reviewed_by_name && !editing && (
+        <p className="mt-1 text-xs text-slate-400">
+          Revisó: {item.reviewed_by_name}
+          {item.reviewed_at ? ` · ${formatDateTime(item.reviewed_at)}` : ""}
+        </p>
+      )}
       {editing && (
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <input
@@ -242,12 +267,24 @@ export default function ApplicationDetailPage() {
   if (error) return <ErrorView message={(error as Error).message} />;
   if (!data) return null;
 
-  const canReview = hasPermission("applications:approve") && ["RADICADA", "EN_REVISION"].includes(data.status);
+  const isOpen = ["RADICADA", "EN_REVISION"].includes(data.status);
+  const canReview = hasPermission("applications:review") && isOpen;
+  const canDecide = hasPermission("applications:approve") && isOpen;
 
   return (
     <div className="max-w-2xl">
       <h1 className="mb-1 text-xl font-semibold text-slate-800">Solicitud #{data.id}</h1>
-      <p className="mb-4 text-sm text-slate-400">Estado actual: {data.status}</p>
+      <p className="mb-1 text-sm text-slate-400">Estado actual: {data.status}</p>
+      <p className="mb-4 text-xs text-slate-400">
+        Radicada por {data.created_by_name ?? "—"} · {formatDateTime(data.created_at)}
+        {data.decided_by_name && (
+          <>
+            {" "}
+            · Decidida por {data.decided_by_name}
+            {data.decided_at ? ` · ${formatDateTime(data.decided_at)}` : ""}
+          </>
+        )}
+      </p>
 
       {actionError && <p className="mb-4 rounded-md bg-red-50 p-2 text-sm text-red-700">{actionError}</p>}
 
@@ -319,16 +356,18 @@ export default function ApplicationDetailPage() {
         </div>
       )}
 
+      <ReferenceChecks applicationId={data.id} references={data.references} canEdit={canReview} onChanged={invalidate} />
+
       {data.rejection_reason && (
         <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
           Motivo de rechazo: {data.rejection_reason}
         </div>
       )}
 
-      {hasPermission("applications:approve") && ["RADICADA", "EN_REVISION"].includes(data.status) && (
+      {(canReview || canDecide) && (
         <div className="mb-4 space-y-3 rounded-xl border border-slate-200 bg-white p-4">
           <h2 className="text-sm font-semibold text-slate-700">Decisión</h2>
-          {data.status === "RADICADA" && (
+          {canReview && data.status === "RADICADA" && (
             <button
               onClick={() => void startReview()}
               disabled={deciding}
@@ -337,6 +376,11 @@ export default function ApplicationDetailPage() {
               {deciding ? "Procesando..." : "Poner en revisión"}
             </button>
           )}
+          {!canDecide && (
+            <p className="text-xs text-slate-400">Aprobar o rechazar la solicitud lo hace quien tenga ese permiso.</p>
+          )}
+          {canDecide && (
+            <>
           <p className="text-xs text-slate-400">
             Para aprobar, todos los documentos y participantes deben quedar en estado APROBADO.
           </p>
@@ -362,6 +406,8 @@ export default function ApplicationDetailPage() {
               {deciding ? "Procesando..." : "Rechazar"}
             </button>
           </div>
+            </>
+          )}
         </div>
       )}
 
@@ -471,11 +517,147 @@ export default function ApplicationDetailPage() {
         <ul className="space-y-1 text-sm text-slate-600">
           {data.history.map((h, idx) => (
             <li key={idx}>
-              {formatDate(h.created_at)}: {h.from_status ?? "—"} → {h.to_status} {h.reason ? `(${h.reason})` : ""}
+              {formatDateTime(h.created_at)}: {h.from_status ?? "—"} → {h.to_status} {h.reason ? `(${h.reason})` : ""}
+              {h.user_name ? ` · ${h.user_name}` : ""}
             </li>
           ))}
         </ul>
       </div>
+    </div>
+  );
+}
+
+const RESULT_LABELS: Record<string, string> = { POSITIVA: "Positiva", NEGATIVA: "Negativa", SIN_RESPUESTA: "Sin respuesta" };
+const RESULT_STYLES: Record<string, string> = {
+  POSITIVA: "bg-brand-50 text-brand-700",
+  NEGATIVA: "bg-red-50 text-red-700",
+  SIN_RESPUESTA: "bg-amber-50 text-amber-700"
+};
+
+function ReferenceChecks({
+  applicationId,
+  references,
+  canEdit,
+  onChanged
+}: {
+  applicationId: number;
+  references: ReferenceCheck[];
+  canEdit: boolean;
+  onChanged: () => void;
+}) {
+  const empty = { referenceType: "PERSONAL", referenceName: "", phone: "", contacted: false, result: "POSITIVA", notes: "" };
+  const [form, setForm] = useState(empty);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const { submit, pending } = useIdempotentSubmit(`reference:${applicationId}`);
+
+  function startEdit(r: ReferenceCheck) {
+    setEditingId(r.id);
+    setForm({
+      referenceType: r.reference_type,
+      referenceName: r.reference_name,
+      phone: r.phone ?? "",
+      contacted: r.contacted,
+      result: r.result ?? "POSITIVA",
+      notes: r.notes ?? ""
+    });
+  }
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const payload = {
+      referenceType: form.referenceType,
+      referenceName: form.referenceName,
+      phone: form.phone || undefined,
+      contacted: form.contacted,
+      result: form.contacted ? form.result : undefined,
+      notes: form.notes || undefined
+    };
+    try {
+      const out = await submit(payload, (idempotencyKey) =>
+        editingId
+          ? api.put(`/applications/${applicationId}/references/${editingId}`, payload)
+          : api.post(`/applications/${applicationId}/references`, payload, { idempotencyKey })
+      );
+      if (!out.ran) return;
+      setForm(empty);
+      setEditingId(null);
+      onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo guardar la referencia");
+    }
+  }
+
+  if (references.length === 0 && !canEdit) return null;
+  const input = "rounded-md border border-slate-300 px-2 py-1 text-sm";
+
+  return (
+    <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
+      <h2 className="mb-2 text-sm font-semibold text-slate-700">Verificación de referencias</h2>
+      {references.length === 0 ? (
+        <p className="mb-3 text-sm text-slate-400">Aún no se han registrado referencias.</p>
+      ) : (
+        <ul className="mb-3 space-y-2">
+          {references.map((r) => (
+            <li key={r.id} className="rounded-lg border border-slate-100 p-2 text-sm text-slate-700">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span>
+                  {r.reference_type === "PERSONAL" ? "Personal" : "Laboral"}: {r.reference_name}
+                  {r.phone ? ` · ${r.phone}` : ""}
+                </span>
+                <span className="flex items-center gap-2">
+                  {r.contacted && r.result ? (
+                    <span className={`rounded-full px-2 py-0.5 text-xs ${RESULT_STYLES[r.result]}`}>{RESULT_LABELS[r.result]}</span>
+                  ) : (
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">No contactada</span>
+                  )}
+                  {canEdit && (
+                    <button type="button" onClick={() => startEdit(r)} className="text-xs text-brand-700 hover:underline">
+                      Editar
+                    </button>
+                  )}
+                </span>
+              </div>
+              {r.notes && <p className="mt-1 text-xs text-slate-500">{r.notes}</p>}
+              <p className="mt-1 text-xs text-slate-400">
+                Verificó: {r.checked_by_name ?? "—"} · {formatDateTime(r.checked_at)}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+      {canEdit && (
+        <form onSubmit={onSubmit} className="flex flex-wrap items-end gap-2">
+          {error && <p className="w-full rounded-md bg-red-50 p-2 text-sm text-red-700">{error}</p>}
+          <select className={input} value={form.referenceType} onChange={(e) => setForm({ ...form, referenceType: e.target.value })}>
+            <option value="PERSONAL">Personal</option>
+            <option value="LABORAL">Laboral</option>
+          </select>
+          <input className={`${input} min-w-[10rem] flex-1`} required minLength={2} placeholder="Nombre de la referencia" value={form.referenceName} onChange={(e) => setForm({ ...form, referenceName: e.target.value })} />
+          <input className={`${input} w-36`} placeholder="Teléfono" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+          <label className="flex items-center gap-1 text-sm text-slate-700">
+            <input type="checkbox" checked={form.contacted} onChange={(e) => setForm({ ...form, contacted: e.target.checked })} />
+            Contactada
+          </label>
+          {form.contacted && (
+            <select className={input} value={form.result} onChange={(e) => setForm({ ...form, result: e.target.value })}>
+              <option value="POSITIVA">Positiva</option>
+              <option value="NEGATIVA">Negativa</option>
+              <option value="SIN_RESPUESTA">Sin respuesta</option>
+            </select>
+          )}
+          <input className={`${input} min-w-[10rem] flex-1`} maxLength={500} placeholder="Observación (opcional)" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+          <button type="submit" disabled={pending} className="rounded-md border border-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-60">
+            {pending ? "Guardando..." : editingId ? "Guardar cambios" : "Agregar referencia"}
+          </button>
+          {editingId && (
+            <button type="button" onClick={() => { setEditingId(null); setForm(empty); }} className="text-sm text-slate-500 hover:underline">
+              Cancelar
+            </button>
+          )}
+        </form>
+      )}
     </div>
   );
 }

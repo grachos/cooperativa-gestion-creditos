@@ -1,6 +1,7 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
+import { permissionLabel } from "../lib/permissions";
 import { Loading, ErrorView } from "../components/StateViews";
 import { useAuth } from "../context/AuthContext";
 import { useParameterList } from "../hooks/useParameterList";
@@ -21,6 +22,7 @@ interface ManagedUser {
   username: string;
   status: "ACTIVO" | "INACTIVO";
   role_codes: string[];
+  permissions: string[];
   id_type: string | null;
   id_number: string | null;
   phone: string | null;
@@ -34,7 +36,74 @@ interface Role {
   name: string;
 }
 
-function EditUserRow({ user, roles }: { user: ManagedUser; roles: Role[] }) {
+interface PermissionInfo {
+  code: string;
+  description: string | null;
+}
+
+function PermissionsPanel({ user, catalog, onSaved }: { user: ManagedUser; catalog: PermissionInfo[]; onSaved: (m: string) => void }) {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState<string[]>(user.permissions);
+  const [error, setError] = useState<string | null>(null);
+
+  // Si los datos del usuario se recargan (por ejemplo, tras guardar), la selección se sincroniza.
+  useEffect(() => setSelected(user.permissions), [user.permissions]);
+
+  const save = useMutation({
+    mutationFn: () => api.put(`/users/${user.id}/permissions`, { permissions: selected }),
+    onSuccess: () => {
+      setError(null);
+      void queryClient.invalidateQueries({ queryKey: ["users"] });
+      onSaved("Permisos guardados. La persona los verá al volver a entrar (o en máximo 15 minutos).");
+    },
+    onError: (err) => setError(err instanceof Error ? err.message : "No se pudieron guardar los permisos")
+  });
+
+  const changed = selected.length !== user.permissions.length || selected.some((p) => !user.permissions.includes(p));
+
+  return (
+    <div className="mt-2">
+      <button type="button" onClick={() => setOpen((v) => !v)} className="text-xs font-medium text-brand-700 hover:underline">
+        {open ? "Ocultar permisos" : `Permisos (${user.permissions.length})`}
+      </button>
+      {open && (
+        <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 p-3">
+          <p className="mb-2 text-xs text-slate-500">
+            Marque lo que esta persona puede hacer. Parte de los permisos viene de su rol; aquí puede agregar o quitar
+            casillas solo para este usuario.
+          </p>
+          {error && <p className="mb-2 rounded-md bg-red-50 p-2 text-xs text-red-700">{error}</p>}
+          <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+            {catalog.map((p) => (
+              <label key={p.code} className="flex items-start gap-2 text-xs text-slate-700">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={selected.includes(p.code)}
+                  onChange={() =>
+                    setSelected((prev) => (prev.includes(p.code) ? prev.filter((c) => c !== p.code) : [...prev, p.code]))
+                  }
+                />
+                {permissionLabel(p.code, p.description)}
+              </label>
+            ))}
+          </div>
+          <button
+            type="button"
+            disabled={!changed || save.isPending}
+            onClick={() => save.mutate()}
+            className="mt-3 rounded-md bg-brand-600 px-3 py-1 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+          >
+            {save.isPending ? "Guardando..." : "Guardar permisos"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EditUserRow({ user, roles, permissionCatalog }: { user: ManagedUser; roles: Role[]; permissionCatalog: PermissionInfo[] }) {
   const idTypes = useParameterList("tipos_identificacion", DEFAULT_ID_TYPES);
   const queryClient = useQueryClient();
   const [roleCodes, setRoleCodes] = useState(user.role_codes);
@@ -173,6 +242,8 @@ function EditUserRow({ user, roles }: { user: ManagedUser; roles: Role[] }) {
         </button>
       </div>
 
+      <PermissionsPanel user={user} catalog={permissionCatalog} onSaved={showSuccess} />
+
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <input
           placeholder="Nombre completo"
@@ -265,6 +336,11 @@ export default function UsersPage() {
   const { data: managed, isLoading: isLoadingManaged, error: managedError } = useQuery({
     queryKey: ["users", "manage"],
     queryFn: () => api.get<{ data: ManagedUser[] }>("/users/manage"),
+    enabled: canWrite
+  });
+  const { data: permissionCatalog } = useQuery({
+    queryKey: ["users", "permissions"],
+    queryFn: () => api.get<{ data: PermissionInfo[] }>("/users/permissions"),
     enabled: canWrite
   });
   const { data: roles } = useQuery({
@@ -366,7 +442,7 @@ export default function UsersPage() {
           {canWrite ? (
             <div className="space-y-2">
               {managed?.data.map((u) => (
-                <EditUserRow key={u.id} user={u} roles={roles?.data ?? []} />
+                <EditUserRow key={u.id} user={u} roles={roles?.data ?? []} permissionCatalog={permissionCatalog?.data ?? []} />
               ))}
             </div>
           ) : (

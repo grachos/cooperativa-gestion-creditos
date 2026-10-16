@@ -41,9 +41,22 @@ async function loadUserWithAccess(userId: number) {
      WHERE ur.user_id = ?`,
     [userId]
   );
-  const permissions = (permRows as any[]).map((p) => p.code);
+  const permissionSet = new Set((permRows as any[]).map((p) => p.code as string));
 
-  return { user, roles, permissions };
+  // Diferencias por usuario sobre sus roles (pantalla de casillas en Usuarios):
+  // granted = 1 agrega un permiso, granted = 0 quita uno que el rol daba.
+  const [overrideRows] = await pool.query<any[]>(
+    `SELECT p.code, up.granted FROM user_permissions up
+     JOIN permissions p ON p.id = up.permission_id
+     WHERE up.user_id = ?`,
+    [userId]
+  );
+  for (const o of overrideRows as any[]) {
+    if (o.granted) permissionSet.add(o.code);
+    else permissionSet.delete(o.code);
+  }
+
+  return { user, roles, permissions: [...permissionSet] };
 }
 
 authRouter.post(
