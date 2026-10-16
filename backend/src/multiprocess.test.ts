@@ -1,12 +1,15 @@
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { randomPassword } from "./testSupport.js";
 
 /**
  * Protecciones para varios procesos / ejecuciones simultáneas, contra MySQL real
  * (opcional; crea datos de prueba, usar una base de pruebas):
  *   JOBS_TEST_DB=1 DB_HOST=… DB_USER=… DB_PASSWORD=… DB_NAME=… npm test
  */
+const TEST_PASSWORD = randomPassword();
+
 describe.skipIf(process.env.JOBS_TEST_DB !== "1" && process.env.TEST_DB !== "1")("Varios procesos: candados, job diario, alertas únicas y buzón SSE (MySQL real)", () => {
   let pool: typeof import("./db/pool.js").pool;
   let jobLock: typeof import("./utils/jobLock.js");
@@ -28,13 +31,13 @@ describe.skipIf(process.env.JOBS_TEST_DB !== "1" && process.env.TEST_DB !== "1")
     await pool.query(`INSERT INTO users (email, username, password_hash, full_name) VALUES (?, ?, ?, 'Prueba jobs')`, [
       `jobs${run}@test.local`,
       `jobs${run}`,
-      bcrypt.default.hashSync("Jobs-test-123*", 4)
+      bcrypt.default.hashSync(TEST_PASSWORD, 4)
     ]);
     await pool.query(`INSERT IGNORE INTO user_roles (user_id, role_id) SELECT u.id, r.id FROM users u, roles r WHERE u.username = ? AND r.code = 'ADMIN'`, [`jobs${run}`]);
     const login = await fetch(`${base}/api/v1/auth/login`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ identifier: `jobs${run}`, password: "Jobs-test-123*" })
+      body: JSON.stringify({ identifier: `jobs${run}`, password: TEST_PASSWORD })
     });
     token = ((await login.json()) as any).accessToken;
   });

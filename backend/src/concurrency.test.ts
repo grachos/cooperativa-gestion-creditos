@@ -1,6 +1,7 @@
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { randomPassword } from "./testSupport.js";
 
 /**
  * Pruebas de CARRERAS contra MySQL/MariaDB real: operaciones de dinero que dos
@@ -12,6 +13,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
  * ¡Usan datos de prueba y crean registros! Apúntelas a una base de pruebas.
  */
 const enabled = process.env.CONCURRENCY_TEST_DB === "1" || process.env.TEST_DB === "1";
+
+const TEST_PASSWORD = randomPassword();
 
 describe.skipIf(!enabled)("Concurrencia en operaciones de dinero (MySQL real)", () => {
   let server: Server;
@@ -43,7 +46,7 @@ describe.skipIf(!enabled)("Concurrencia en operaciones de dinero (MySQL real)", 
     });
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 
-    const hash = await bcrypt.default.hash("Concurrency1*", 4);
+    const hash = await bcrypt.default.hash(TEST_PASSWORD, 4);
     await pool.query(
       `INSERT INTO users (email, username, password_hash, full_name) VALUES (?, ?, ?, 'Prueba carreras')
        ON DUPLICATE KEY UPDATE password_hash = VALUES(password_hash), status = 'ACTIVO'`,
@@ -57,7 +60,7 @@ describe.skipIf(!enabled)("Concurrencia en operaciones de dinero (MySQL real)", 
     const login = await fetch(`${base}/api/v1/auth/login`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ identifier: `conc${run}`, password: "Concurrency1*" })
+      body: JSON.stringify({ identifier: `conc${run}`, password: TEST_PASSWORD })
     });
     token = ((await login.json()) as any).accessToken;
     expect(token).toBeTruthy();

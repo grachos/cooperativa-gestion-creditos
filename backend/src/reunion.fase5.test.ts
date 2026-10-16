@@ -1,11 +1,15 @@
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { randomPassword } from "./testSupport.js";
 
 /**
  * Reunión 2026-10-16, Fase 5, contra MySQL real (opcional; crea datos de prueba, usar una base de pruebas):
  *   TEST_DB=1 DB_HOST=… DB_USER=… DB_PASSWORD=… DB_NAME=… npm test
  */
+const TEST_PASSWORD = randomPassword();
+const TEST_PASSWORD2 = randomPassword();
+
 describe.skipIf(process.env.TEST_DB !== "1")("Fase 5 de la reunión: mora sugerida, gasto de notificación y cancelación anticipada (MySQL real)", () => {
   let pool: typeof import("./db/pool.js").pool;
   let server: Server;
@@ -38,12 +42,12 @@ describe.skipIf(process.env.TEST_DB !== "1")("Fase 5 de la reunión: mora sugeri
     });
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     await pool.query(`INSERT INTO users (email, username, password_hash, full_name) VALUES (?, ?, ?, 'Prueba fase 5')`, [
-      `f5${run}@test.local`, `f5${run}`, bcrypt.default.hashSync("Fase5-123*", 4)
+      `f5${run}@test.local`, `f5${run}`, bcrypt.default.hashSync(TEST_PASSWORD, 4)
     ]);
     await pool.query(`INSERT IGNORE INTO user_roles (user_id, role_id) SELECT u.id, r.id FROM users u, roles r WHERE u.username = ? AND r.code = 'ADMIN'`, [`f5${run}`]);
     const login = await fetch(`${base}/api/v1/auth/login`, {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ identifier: `f5${run}`, password: "Fase5-123*" })
+      body: JSON.stringify({ identifier: `f5${run}`, password: TEST_PASSWORD })
     });
     token = ((await login.json()) as any).accessToken;
   });
@@ -56,7 +60,7 @@ describe.skipIf(process.env.TEST_DB !== "1")("Fase 5 de la reunión: mora sugeri
   const DAY = 86_400_000;
   const dayOffset = (days: number) => new Date(Date.now() + days * DAY).toISOString().slice(0, 10);
   const today = dayOffset(0);
-  const PASSWORD = "Fase5-Usuario-123*";
+  const PASSWORD = TEST_PASSWORD2;
   const cents = (n: number) => Math.round(n * 100) / 100;
 
   async function newUser(label: string, roleCodes: string[]) {

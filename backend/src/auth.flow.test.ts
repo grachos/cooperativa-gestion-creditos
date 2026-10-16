@@ -2,6 +2,7 @@ import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import bcryptjs from "bcryptjs";
+import { randomPassword } from "./testSupport.js";
 
 // Captura el enlace de restablecimiento en vez de enviar un correo.
 const sentLinks: string[] = [];
@@ -15,13 +16,19 @@ vi.mock("./modules/auth/mailer.js", () => ({
  * Flujo de autenticación contra MySQL real (opcional):
  *   AUTH_TEST_DB=1 DB_HOST=… DB_USER=… DB_PASSWORD=… DB_NAME=… npm test
  */
+const TEST_PASSWORD = randomPassword();
+const TEST_PASSWORD2 = randomPassword();
+const TEST_PASSWORD3 = randomPassword();
+
+const TEST_PASSWORD4 = randomPassword();
+
 describe.skipIf(process.env.AUTH_TEST_DB !== "1" && process.env.TEST_DB !== "1")("Autenticación: tokens con SHA-256 y compatibilidad con bcrypt", () => {
   let server: Server;
   let base: string;
   let pool: typeof import("./db/pool.js").pool;
   const run = Date.now().toString().slice(-7);
   const username = `auth${run}`;
-  const password = "Auth-flow-123*";
+  const password = TEST_PASSWORD;
 
   const post = (path: string, body: unknown, token?: string) =>
     fetch(`${base}/api/v1${path}`, {
@@ -101,10 +108,10 @@ describe.skipIf(process.env.AUTH_TEST_DB !== "1" && process.env.TEST_DB !== "1")
     const [rows] = await pool.query<any[]>(`SELECT token_hash FROM password_reset_tokens WHERE user_id = ? ORDER BY id DESC LIMIT 1`, [uid]);
     expect((rows as any[])[0].token_hash).toMatch(/^[0-9a-f]{64}$/);
 
-    expect((await post("/auth/reset-password", { token, uid, newPassword: "Nueva-clave-456*" })).status).toBe(204);
-    expect((await post("/auth/reset-password", { token, uid, newPassword: "Otra-clave-789*" })).status).toBe(400); // un solo uso
+    expect((await post("/auth/reset-password", { token, uid, newPassword: TEST_PASSWORD2 })).status).toBe(204);
+    expect((await post("/auth/reset-password", { token, uid, newPassword: TEST_PASSWORD3 })).status).toBe(400); // un solo uso
     expect((await post("/auth/login", { identifier: username, password })).status).toBe(401);
-    expect((await post("/auth/login", { identifier: username, password: "Nueva-clave-456*" })).status).toBe(200);
+    expect((await post("/auth/login", { identifier: username, password: TEST_PASSWORD2 })).status).toBe(200);
   });
 
   it("un enlace de restablecimiento antiguo (token con hash bcrypt) sigue siendo válido", async () => {
@@ -114,6 +121,6 @@ describe.skipIf(process.env.AUTH_TEST_DB !== "1" && process.env.TEST_DB !== "1")
       `INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 1 HOUR))`,
       [user.id, bcryptjs.hashSync(rawToken, 10)]
     );
-    expect((await post("/auth/reset-password", { token: rawToken, uid: user.id, newPassword: "Clave-legacy-1*" })).status).toBe(204);
+    expect((await post("/auth/reset-password", { token: rawToken, uid: user.id, newPassword: TEST_PASSWORD4 })).status).toBe(204);
   });
 });

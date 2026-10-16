@@ -1,11 +1,14 @@
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { randomPassword } from "./testSupport.js";
 
 /**
  * Reportes contra MySQL real (opcional; crea datos de prueba, usar una base de pruebas):
  *   TEST_DB=1 DB_HOST=… DB_USER=… DB_PASSWORD=… DB_NAME=… npm test
  */
+const TEST_PASSWORD = randomPassword();
+
 describe.skipIf(process.env.REPORTS_TEST_DB !== "1" && process.env.TEST_DB !== "1")("Reportes: caché con invalidación y exportación CSV (MySQL real)", () => {
   let pool: typeof import("./db/pool.js").pool;
   let server: Server;
@@ -37,12 +40,12 @@ describe.skipIf(process.env.REPORTS_TEST_DB !== "1" && process.env.TEST_DB !== "
     });
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     await pool.query(`INSERT INTO users (email, username, password_hash, full_name) VALUES (?, ?, ?, 'Prueba reportes')`, [
-      `rep${run}@test.local`, `rep${run}`, bcrypt.default.hashSync("Reportes-123*", 4)
+      `rep${run}@test.local`, `rep${run}`, bcrypt.default.hashSync(TEST_PASSWORD, 4)
     ]);
     await pool.query(`INSERT IGNORE INTO user_roles (user_id, role_id) SELECT u.id, r.id FROM users u, roles r WHERE u.username = ? AND r.code = 'ADMIN'`, [`rep${run}`]);
     const login = await fetch(`${base}/api/v1/auth/login`, {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ identifier: `rep${run}`, password: "Reportes-123*" })
+      body: JSON.stringify({ identifier: `rep${run}`, password: TEST_PASSWORD })
     });
     token = ((await login.json()) as any).accessToken;
   });

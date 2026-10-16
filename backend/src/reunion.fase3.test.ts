@@ -1,11 +1,15 @@
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { randomPassword } from "./testSupport.js";
 
 /**
  * Reunión 2026-10-16, Fases 3 y 4, contra MySQL real (opcional; crea datos de prueba, usar una base de pruebas):
  *   TEST_DB=1 DB_HOST=… DB_USER=… DB_PASSWORD=… DB_NAME=… npm test
  */
+const TEST_PASSWORD = randomPassword();
+const TEST_PASSWORD2 = randomPassword();
+
 describe.skipIf(process.env.TEST_DB !== "1")("Fases 3 y 4 de la reunión: asesores, documentos del asociado y cobro jurídico (MySQL real)", () => {
   let pool: typeof import("./db/pool.js").pool;
   let server: Server;
@@ -38,12 +42,12 @@ describe.skipIf(process.env.TEST_DB !== "1")("Fases 3 y 4 de la reunión: asesor
     });
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     await pool.query(`INSERT INTO users (email, username, password_hash, full_name) VALUES (?, ?, ?, 'Prueba fase 3')`, [
-      `f3${run}@test.local`, `f3${run}`, bcrypt.default.hashSync("Fase3-123*", 4)
+      `f3${run}@test.local`, `f3${run}`, bcrypt.default.hashSync(TEST_PASSWORD, 4)
     ]);
     await pool.query(`INSERT IGNORE INTO user_roles (user_id, role_id) SELECT u.id, r.id FROM users u, roles r WHERE u.username = ? AND r.code = 'ADMIN'`, [`f3${run}`]);
     const login = await fetch(`${base}/api/v1/auth/login`, {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ identifier: `f3${run}`, password: "Fase3-123*" })
+      body: JSON.stringify({ identifier: `f3${run}`, password: TEST_PASSWORD })
     });
     token = ((await login.json()) as any).accessToken;
   });
@@ -54,7 +58,7 @@ describe.skipIf(process.env.TEST_DB !== "1")("Fases 3 y 4 de la reunión: asesor
 
   let seq = 0;
   const today = new Date().toISOString().slice(0, 10);
-  const PASSWORD = "Fase3-Usuario-123*";
+  const PASSWORD = TEST_PASSWORD2;
 
   async function newUser(label: string, roleCodes: string[] = []) {
     const n = ++seq;
