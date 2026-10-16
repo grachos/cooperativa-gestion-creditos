@@ -15,6 +15,7 @@ interface Pending {
 }
 
 let paymentCalls: { key: string | undefined; body: string }[];
+let quoteBody: unknown = null; // null = el servidor no responde la sugerencia (404)
 let pendingPayments: Pending[];
 let fetchMock: ReturnType<typeof vi.fn>;
 
@@ -24,8 +25,10 @@ beforeEach(() => {
   localStorage.setItem("accessToken", "tok");
   paymentCalls = [];
   pendingPayments = [];
+  quoteBody = null;
   fetchMock = vi.fn((url: string, init?: RequestInit) => {
     if (String(url).endsWith("/parameters")) return Promise.resolve(json(200, []));
+    if (String(url).includes("/payments/quote")) return Promise.resolve(quoteBody ? json(200, quoteBody) : json(404, { error: "no" }));
     if (String(url).endsWith("/payments")) {
       const headers = init?.headers as Record<string, string>;
       paymentCalls.push({ key: headers["Idempotency-Key"], body: String(init?.body) });
@@ -180,5 +183,67 @@ describe("PaymentForm: pago verificado", () => {
     await user.click(button());
     await waitFor(() => expect(paymentCalls).toHaveLength(2));
     expect(JSON.parse(paymentCalls[1]!.body).verified).toBe(true);
+  });
+});
+
+const quoteWith = (canNegotiate: boolean) => ({
+  asOf: new Date().toISOString().slice(0, 10),
+  canNegotiate,
+  creditStatus: "EN_MORA",
+  mora: {
+    mode: "SUGERIDO", rateOrValue: 0.05, rateType: "DIARIA", graceDays: 8, base: "CUOTA_VENCIDA", maxOverdueDays: 40,
+    items: [{ installmentId: 1, installmentNumber: 1, overdueDays: 40, accrued: 4000, charged: 0, pending: 4000 }],
+    suggested: 4000
+  },
+  notification: { enabled: true, amount: 100000, suggested: 100000 },
+  payoff: { enabled: true, defaultPercent: 50, percent: 50, outstandingPrincipal: 0, outstandingInterest: 0, futureInterest: 0, discount: 0, pendingCharges: 0, total: 0 }
+});
+
+describe("PaymentForm: mora y gasto de notificación sugeridos", () => {
+  it("quien puede negociar ve la mora sugerida, puede bajarla y se envía lo decidido", async () => {
+    quoteBody = quoteWith(true);
+    const user = userEvent.setup();
+    setup();
+    await screen.findByText(/Mora sugerida/);
+    const moraInput = (await screen.findByLabelText(/Mora a cobrar/)) as HTMLInputElement;
+    expect(moraInput.value).toBe("4000");
+    await user.clear(moraInput);
+    await user.type(moraInput, "2500");
+    await user.type(amountInput(), "50000");
+    await user.click(button());
+    await waitFor(() => expect(paymentCalls).toHaveLength(1));
+    const body = JSON.parse(paymentCalls[0]!.body);
+    expect(body.moraAmount).toBe(2500);
+    expect(body.notificationAmount).toBe(100000);
+  });
+
+  it("0 significa no cobrar la mora: no se envía el cargo", async () => {
+    quoteBody = quoteWith(true);
+    const user = userEvent.setup();
+    setup();
+    const moraInput = (await screen.findByLabelText(/Mora a cobrar/)) as HTMLInputElement;
+    await user.clear(moraInput);
+    await user.type(moraInput, "0");
+    await user.clear(screen.getByLabelText(/Gasto a cobrar/));
+    await user.type(amountInput(), "50000");
+    await user.click(button());
+    await waitFor(() => expect(paymentCalls).toHaveLength(1));
+    const body = JSON.parse(paymentCalls[0]!.body);
+    expect(body.moraAmount).toBeUndefined();
+    expect(body.notificationAmount).toBeUndefined();
+  });
+
+  it("quien no tiene permiso de ajustes la ve pero no la decide, y no se envía ningún cargo", async () => {
+    quoteBody = quoteWith(false);
+    const user = userEvent.setup();
+    setup();
+    await screen.findByText(/Mora sugerida/);
+    expect(screen.queryByLabelText(/Mora a cobrar/)).toBeNull();
+    expect(screen.getByText(/lo decide quien tiene el permiso de ajustes/i)).toBeTruthy();
+    await user.type(amountInput(), "50000");
+    await user.click(button());
+    await waitFor(() => expect(paymentCalls).toHaveLength(1));
+    const body = JSON.parse(paymentCalls[0]!.body);
+    expect(body.moraAmount).toBeUndefined();
   });
 });

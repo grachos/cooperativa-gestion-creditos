@@ -9,6 +9,12 @@ export interface DelinquencyPolicy {
   rateOrValue: number;
   cap: number | null;
   earlyAlertDays: number;
+  /**
+   * SUGERIDO (por defecto): el sistema calcula la mora y la sugiere al registrar el pago; quien tiene
+   * permiso de ajustes decide cuánto cobrar y queda como ajuste INTERES_MORA. AUTOMATICO: la mora se
+   * cobra siempre al aplicar el pago (comportamiento anterior).
+   */
+  mode: "SUGERIDO" | "AUTOMATICO";
 }
 
 /**
@@ -81,15 +87,26 @@ export const DEFAULT_DELINQUENCY_POLICY: DelinquencyPolicy = {
   rateType: "DIARIA",
   rateOrValue: 0, // sin evidencia de interés de mora automático en los datos reales
   cap: null,
-  earlyAlertDays: 3 // alerta temprana 3 días antes del vencimiento
+  earlyAlertDays: 3, // alerta temprana 3 días antes del vencimiento
+  mode: "SUGERIDO"
 };
+
+/** Base sobre la que se calcula la mora de una cuota: solo capital vencido, o capital + interés de la cuota. */
+export function lateFeeBase(policy: DelinquencyPolicy, outstandingPrincipal: number, outstandingInterest: number): number {
+  return policy.base === "CUOTA_VENCIDA" ? round2(outstandingPrincipal + outstandingInterest) : outstandingPrincipal;
+}
 
 /** Lee el parámetro `politica_mora` en vez de DEFAULT_DELINQUENCY_POLICY. */
 export async function loadDelinquencyPolicy(db: PoolLike): Promise<DelinquencyPolicy> {
   const [rows] = await db.query<any[]>(`SELECT value FROM parameters WHERE \`key\` = 'politica_mora'`);
   const value = (rows as any[])[0]?.value;
   if (value && typeof value === "object" && typeof value.rateOrValue === "number" && typeof value.graceDays === "number") {
-    return { ...DEFAULT_DELINQUENCY_POLICY, ...value };
+    const merged = { ...DEFAULT_DELINQUENCY_POLICY, ...value } as DelinquencyPolicy;
+    // Valores escritos a mano en Parámetros: cualquier cosa inesperada vuelve al valor seguro.
+    if (merged.mode !== "AUTOMATICO") merged.mode = "SUGERIDO";
+    if (merged.base !== "CUOTA_VENCIDA") merged.base = "CAPITAL_VENCIDO";
+    if (merged.rateType !== "MENSUAL_FIJA") merged.rateType = "DIARIA";
+    return merged;
   }
   return DEFAULT_DELINQUENCY_POLICY;
 }

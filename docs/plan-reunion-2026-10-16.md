@@ -75,7 +75,9 @@ Nota: las categorías de documentos de la solicitud (titular/codeudor) se hicier
     la misma lista "en nuestro poder sí/no" y bitácora de gestiones. Hoy existe el tipo
     `PREPARACION_JURIDICA` en gestiones de cobro, pero sin documentos.
 
-## Fase 5 — Interés de mora, gastos y descuentos (requiere datos del cliente)
+## Fase 5 — Interés de mora, gastos y descuentos — IMPLEMENTADA (2026-10-16)
+
+Se decidió no esperar los datos de Jorge y Tatiana: todo es parametrizable con un valor inicial propuesto (ver README, "Fase 5"). Los valores finales se ajustan en Parámetros.
 
 12. **Interés de mora sugerido.** Hoy la política es "no se cobra mora automática"
     (parámetro `politica_mora`) y **no existe ningún parámetro de tasa de mora**. Lo pedido:
@@ -88,7 +90,7 @@ Nota: las categorías de documentos de la solicitud (titular/codeudor) se hicier
 13. **Gasto de notificación automático** a los 30/60 días de mora (como sugerido, mismo criterio).
 14. **Descuento por pago anticipado / cancelación anticipada del crédito**, parametrizable.
 
-**Bloqueo:** Jorge Enrique y Tatiana deben entregar los valores y condiciones exactos
+**Ya no bloquea.** Pendiente solo de ajustar en Parámetros, cuando los entreguen Jorge Enrique y Tatiana, los valores y condiciones exactos
 (valor del % diario de mora y sobre qué saldo se aplica, días de gracia, valor y momento del gasto de notificación, reglas del descuento).
 
 ## Fase 6 — Fuera de este alcance (se coordina aparte)

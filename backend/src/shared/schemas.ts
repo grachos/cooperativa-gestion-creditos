@@ -131,7 +131,27 @@ export const paymentSchema = z.object({
   reference: z.string().max(120).optional().nullable(),
   notes: z.string().max(255).optional().nullable(),
   // El pago se verificó en el banco y su soporte quedó archivado.
-  verified: z.boolean().optional().default(false)
+  verified: z.boolean().optional().default(false),
+  // Cargos que se deciden al registrar el pago (solo con permiso de ajustes): mora y gasto de notificación.
+  moraAmount: z.coerce.number().min(0).optional(),
+  notificationAmount: z.coerce.number().min(0).optional(),
+  chargeReason: z.string().trim().max(200).optional().nullable()
+});
+
+export const earlyPayoffSchema = z.object({
+  creditId: z.coerce.number().int().positive(),
+  receivedDate: z.string().date(),
+  paymentMethod: z.string().min(1).max(60),
+  reference: z.string().max(120).optional().nullable(),
+  notes: z.string().max(255).optional().nullable(),
+  verified: z.boolean().optional().default(false),
+  // Porcentaje de descuento sobre el interés futuro; solo lo puede fijar quien tiene permiso de ajustes.
+  discountPercent: z.coerce.number().min(0).max(100).optional(),
+  moraAmount: z.coerce.number().min(0).optional(),
+  notificationAmount: z.coerce.number().min(0).optional(),
+  chargeReason: z.string().trim().max(200).optional().nullable(),
+  // Total que la persona vio en pantalla: si cambió (nuevos pagos, otro día), se rechaza para que lo revise.
+  expectedTotal: z.coerce.number().min(0)
 });
 
 export const documentCheckSchema = z.object({

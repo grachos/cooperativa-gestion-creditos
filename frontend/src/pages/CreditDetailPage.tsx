@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
@@ -7,6 +7,7 @@ import { formatCurrency, formatDate, formatPercent } from "../lib/format";
 import { Loading, ErrorView } from "../components/StateViews";
 import { useAuth } from "../context/AuthContext";
 import { DocumentChecklist } from "../components/DocumentChecklist";
+import { ChargesPanel, EarlyPayoffForm, usePaymentQuote } from "../components/PaymentCharges";
 import { useParameterList } from "../hooks/useParameterList";
 
 const DEFAULT_PAYMENT_METHODS = ["EFECTIVO", "TRANSFERENCIA", "CONSIGNACION", "DESCUENTO_NOMINA"];
@@ -139,6 +140,9 @@ export default function CreditDetailPage() {
 
       {hasPermission("payments:write") && data.status !== "PAGADO" && data.status !== "ANULADO" && (
         <PaymentForm creditId={data.id} onRegistered={() => void queryClient.invalidateQueries({ queryKey: ["credit", id] })} />
+      )}
+      {hasPermission("payments:write") && data.status !== "PAGADO" && data.status !== "ANULADO" && (
+        <EarlyPayoffForm creditId={data.id} onDone={() => void queryClient.invalidateQueries({ queryKey: ["credit", id] })} />
       )}
 
       {hasPermission("disbursements:write") && ["VIGENTE", "EN_MORA"].includes(data.status) && (
@@ -282,7 +286,7 @@ export default function CreditDetailPage() {
         ) : (
           <ul className="mb-3 space-y-1 text-sm text-slate-600">
             {data.adjustments.map((a) => {
-              const collectable = a.type === "GASTO_NOTIFICACION" || a.type === "OTRO";
+              const collectable = a.type === "GASTO_NOTIFICACION" || a.type === "OTRO" || a.type === "INTERES_MORA";
               const outstanding = Number(a.amount) - Number(a.paid_amount);
               return (
                 <li key={a.id}>
@@ -336,13 +340,31 @@ export function PaymentForm({ creditId, onRegistered }: { creditId: number; onRe
   const [receivedDate, setReceivedDate] = useState(new Date().toISOString().slice(0, 10));
   const [paymentMethod, setPaymentMethod] = useState("TRANSFERENCIA");
   const [verified, setVerified] = useState(false);
+  const [mora, setMora] = useState("");
+  const [notification, setNotification] = useState("");
   const [error, setError] = useState<string | null>(null);
   const { submit, pending: submitting } = useIdempotentSubmit(`payment:${creditId}`);
+  const { data: quote } = usePaymentQuote(creditId, receivedDate);
+  // Lo sugerido cambia con la fecha del pago: se vuelve a proponer (quien negocia puede bajarlo a 0).
+  useEffect(() => {
+    setMora(quote && quote.mora.suggested > 0 ? String(quote.mora.suggested) : "");
+    setNotification(quote && quote.notification.suggested > 0 ? String(quote.notification.suggested) : "");
+  }, [quote?.asOf, quote?.mora.suggested, quote?.notification.suggested]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    const payload = { creditId, receivedDate, amount: Number(amount), paymentMethod, verified };
+    const moraAmount = quote?.canNegotiate ? Number(mora) || 0 : 0;
+    const notificationAmount = quote?.canNegotiate ? Number(notification) || 0 : 0;
+    const payload = {
+      creditId,
+      receivedDate,
+      amount: Number(amount),
+      paymentMethod,
+      verified,
+      moraAmount: moraAmount || undefined,
+      notificationAmount: notificationAmount || undefined
+    };
     try {
       const out = await submit(payload, (idempotencyKey) => api.post("/payments", payload, { idempotencyKey }));
       if (!out.ran) return; // envío duplicado ignorado
@@ -386,6 +408,7 @@ export function PaymentForm({ creditId, onRegistered }: { creditId: number; onRe
           ))}
         </select>
       </div>
+      {quote && <ChargesPanel quote={quote} mora={mora} notification={notification} onMora={setMora} onNotification={setNotification} />}
       <label className="mt-3 flex items-center gap-2 text-sm text-slate-700">
         <input type="checkbox" checked={verified} onChange={(e) => setVerified(e.target.checked)} />
         Pago verificado en el banco y soporte archivado

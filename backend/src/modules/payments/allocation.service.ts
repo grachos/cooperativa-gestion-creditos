@@ -1,6 +1,6 @@
 import type { PoolConnection } from "../../db/pool.js";
 import { round2 } from "../../utils/money.js";
-import { calculateOverdueDays, calculateLateFee, getMoraBucket, loadDelinquencyPolicy, loadMoraBuckets } from "../delinquency/delinquency.service.js";
+import { calculateOverdueDays, calculateLateFee, lateFeeBase, getMoraBucket, loadDelinquencyPolicy, loadMoraBuckets } from "../delinquency/delinquency.service.js";
 
 export interface AllocationLine {
   concept: "GASTOS" | "MORA" | "INTERES" | "CAPITAL";
@@ -43,7 +43,7 @@ async function allocateOutstandingGastos(
 ): Promise<number> {
   const [adjustments] = await conn.query<any[]>(
     `SELECT * FROM credit_adjustments
-     WHERE credit_id = ? AND type IN ('GASTO_NOTIFICACION','OTRO') AND amount > paid_amount
+     WHERE credit_id = ? AND type IN ('GASTO_NOTIFICACION','OTRO','INTERES_MORA') AND amount > paid_amount
      ORDER BY created_at ASC`,
     [creditId]
   );
@@ -56,7 +56,8 @@ async function allocateOutstandingGastos(
     if (applied <= 0) continue;
 
     remaining = round2(remaining - applied);
-    lines.push({ concept: "GASTOS", amount: applied, adjustmentId: adj.id });
+    // La mora cobrada (ajuste INTERES_MORA) se muestra como MORA; el resto de cargos como GASTOS.
+    lines.push({ concept: adj.type === "INTERES_MORA" ? "MORA" : "GASTOS", amount: applied, adjustmentId: adj.id });
     await conn.query(`UPDATE credit_adjustments SET paid_amount = paid_amount + ? WHERE id = ?`, [applied, adj.id]);
   }
 
@@ -111,11 +112,15 @@ export async function allocatePayment(
     const overdueDays = calculateOverdueDays(dueDate, asOf);
     const outstandingPrincipal = round2(inst.principal_due - inst.principal_paid);
     const outstandingInterest = round2(inst.interest_due - inst.interest_paid);
-    const { result: lateFeeDue } = calculateLateFee({
-      policy,
-      overdueDays,
-      principalOrInstallmentBase: outstandingPrincipal
-    });
+    // Modo SUGERIDO: la mora no se cobra sola; entra como ajuste INTERES_MORA decidido al registrar el pago.
+    const { result: lateFeeDue } =
+      policy.mode === "AUTOMATICO"
+        ? calculateLateFee({
+            policy,
+            overdueDays,
+            principalOrInstallmentBase: lateFeeBase(policy, outstandingPrincipal, outstandingInterest)
+          })
+        : { result: 0 };
     const outstandingLateFee = Math.max(0, round2(lateFeeDue - inst.late_fee_paid));
 
     const outstanding: Record<string, number> = {

@@ -526,6 +526,32 @@ Migración `025_reunion_fase3_4.sql`.
 - Los archivos no se suben al servidor; solo se deja constancia de si el documento está en poder de la
   cooperativa (decisión de la reunión, por el costo de almacenamiento).
 
+## Cambios de la reunión con la cooperativa (2026-10-16) — Fase 5: mora, gastos y descuento
+
+Migración `026_reunion_fase5.sql`. Todo sale de Parámetros, con un **valor inicial propuesto** (la cooperativa
+no tuvo que confirmarlo; se ajusta cuando quiera):
+
+| Parámetro | Valor inicial | Qué controla |
+|---|---|---|
+| `politica_mora` | 0,05 % por día de atraso, sobre la cuota vencida, 8 días de gracia, sin tope, modo `SUGERIDO` | `rateOrValue` (% por día; con `rateType` `MENSUAL_FIJA` es un % único de la cuota), `graceDays`, `base` (`CUOTA_VENCIDA` o `CAPITAL_VENCIDO`), `cap` (tope en pesos), `mode` |
+| `gasto_notificacion` | $100.000 a los 30 días de mora y de nuevo cada 30 | `amount`, `firstAfterOverdueDays`, `repeatEveryOverdueDays` (0 = una sola vez), `enabled` |
+| `descuento_pago_anticipado` | 50 % del interés de las cuotas aún no vencidas | `percentOfFutureInterest`, `enabled` |
+
+- 0,05 % diario equivale a ≈ 1,5 % al mes, la cifra mencionada en la reunión. La migración solo reemplaza
+  `politica_mora` si seguía con el valor original de demostración (sin mora); si ya fue editada, no la toca.
+- **Mora sugerida, no automática** (`mode` `SUGERIDO`): al registrar un pago el sistema muestra, por cuota
+  vencida, la mora calculada menos lo ya cobrado. Quien tiene el permiso de ajustes (`adjustments:write`)
+  decide cuánto cobrar (por defecto lo sugerido, 0 = no cobrarla; nunca más de lo calculado). Lo cobrado queda
+  como ajuste `INTERES_MORA` y el mismo pago lo cubre primero. Quien no tiene ese permiso la ve pero el pago se
+  registra sin ella. `mode` `AUTOMATICO` conserva el comportamiento anterior (se cobra siempre).
+- **Gasto de notificación:** se sugiere al llegar al umbral de mora, una vez por umbral; tope = `amount`.
+- **Cancelación anticipada** (`POST /payments/early-payoff`, botón en el crédito): total = capital + interés
+  pendiente − descuento + cargos pendientes. El descuento solo lo aplica (y puede cambiarlo) quien tiene el
+  permiso de ajustes; reduce el interés de las cuotas no vencidas y queda como ajuste `DESCUENTO`. El total
+  mostrado debe coincidir con el del servidor (si cambió, 409). Deja el crédito `PAGADO`. **Ese pago no se puede
+  reversar** desde la aplicación (el descuento ya modificó las cuotas).
+- `GET /payments/quote?creditId=&date=&discountPercent=` entrega lo sugerido (mora, notificación, cancelación).
+
 ## Escalabilidad y concurrencia
 
 Diagnóstico de escalabilidad, cambios realizados, mediciones y pendientes:
