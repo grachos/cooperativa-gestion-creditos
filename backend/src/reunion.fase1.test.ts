@@ -63,10 +63,6 @@ describe.skipIf(process.env.TEST_DB !== "1")("Fase 1 de la reunión: documentos 
     expect(a.status).toBe(201);
     return { id: a.body.id as number, idNumber };
   }
-  async function setParam(key: string, value: unknown) {
-    const r = await call("PUT", `/parameters/${key}`, { value });
-    expect(r.status).toBe(200);
-  }
   async function approveAll(id: number) {
     const d = await call("GET", `/applications/${id}`);
     for (const x of d.body.documents) await call("PUT", `/applications/${id}/documents/${x.id}`, { status: "APROBADO" });
@@ -74,38 +70,39 @@ describe.skipIf(process.env.TEST_DB !== "1")("Fase 1 de la reunión: documentos 
     return call("POST", `/applications/${id}/approve`, {});
   }
 
-  it("documentos por participante: el titular y cada codeudor tienen su propia lista parametrizada", async () => {
-    const before = (await call("GET", "/parameters")).body as any[];
-    const old = (k: string) => before.find((p) => p.key === k)?.value;
-    try {
-      await setParam("documentos_requeridos_titular", ["Cédula titular", "Desprendibles"]);
-      await setParam("documentos_requeridos_codeudor", ["Cédula codeudor"]);
-      const t = await newAssociate("Titular");
-      const c1 = await newAssociate("Codeudor1");
-      const c2 = await newAssociate("Codeudor2");
-      const ap = await call("POST", "/applications", {
-        titularAssociateId: t.id, coDebtorAssociateIds: [c1.id, c2.id], requestedAmount: 1_000_000, termValue: 12, interestRate: 2
-      });
-      const id = ap.body.id;
-      const d = await call("GET", `/applications/${id}`);
-      const docs = d.body.documents as any[];
-      expect(docs).toHaveLength(2 + 1 + 1); // 2 del titular + 1 por cada codeudor
-      const roleOf = (pid: number) => d.body.participants.find((p: any) => p.id === pid).role;
-      expect(docs.filter((x) => roleOf(x.credit_participant_id) === "TITULAR").map((x) => x.document_type).sort()).toEqual(["Cédula titular", "Desprendibles"]);
-      expect(docs.filter((x) => roleOf(x.credit_participant_id) === "CODEUDOR")).toHaveLength(2);
-      // pedir el detalle otra vez no duplica
-      expect(((await call("GET", `/applications/${id}`)).body.documents as any[]).length).toBe(4);
+  it("documentos por participante: el titular y cada codeudor reciben la lista parametrizada de su rol", async () => {
+    // No se modifican los parámetros: los otros archivos de prueba corren en paralelo y comparten la base
+    // (cambiar la lista mientras otra prueba aprueba solicitudes le agrega documentos pendientes).
+    const params = (await call("GET", "/parameters")).body as any[];
+    const list = (k: string): string[] => params.find((p) => p.key === k).value;
+    const titularDocs = list("documentos_requeridos_titular");
+    const codeudorDocs = list("documentos_requeridos_codeudor");
+    expect(titularDocs.length).toBeGreaterThan(0);
+    expect(codeudorDocs.length).toBeGreaterThan(0);
 
-      // aprobar con documentos pendientes: el error dice de qué participante
-      const blocked = await call("POST", `/applications/${id}/approve`, {});
-      expect(blocked.status).toBe(409);
-      expect(JSON.stringify(blocked.body)).toContain("CODEUDOR");
-      expect((await approveAll(id)).status).toBe(200);
-    } finally {
-      for (const k of ["documentos_requeridos_titular", "documentos_requeridos_codeudor"]) {
-        if (old(k) !== undefined) await setParam(k, old(k));
-      }
+    const t = await newAssociate("Titular");
+    const c1 = await newAssociate("Codeudor1");
+    const c2 = await newAssociate("Codeudor2");
+    const ap = await call("POST", "/applications", {
+      titularAssociateId: t.id, coDebtorAssociateIds: [c1.id, c2.id], requestedAmount: 1_000_000, termValue: 12, interestRate: 2
+    });
+    const id = ap.body.id;
+    const d = await call("GET", `/applications/${id}`);
+    const docs = d.body.documents as any[];
+    expect(docs).toHaveLength(titularDocs.length + 2 * codeudorDocs.length);
+    const roleOf = (pid: number) => d.body.participants.find((p: any) => p.id === pid).role;
+    expect(docs.filter((x) => roleOf(x.credit_participant_id) === "TITULAR").map((x) => x.document_type).sort()).toEqual([...titularDocs].sort());
+    for (const cp of (d.body.participants as any[]).filter((p) => p.role === "CODEUDOR")) {
+      expect(docs.filter((x) => x.credit_participant_id === cp.id).map((x) => x.document_type).sort()).toEqual([...codeudorDocs].sort());
     }
+    // pedir el detalle otra vez no duplica
+    expect(((await call("GET", `/applications/${id}`)).body.documents as any[]).length).toBe(docs.length);
+
+    // aprobar con documentos pendientes: el error dice de qué participante
+    const blocked = await call("POST", `/applications/${id}/approve`, {});
+    expect(blocked.status).toBe(409);
+    expect(JSON.stringify(blocked.body)).toContain("CODEUDOR");
+    expect((await approveAll(id)).status).toBe(200);
   });
 
   it("solicitudes anteriores (documentos sin participante) conservan su lista y no se les agregan filas", async () => {
