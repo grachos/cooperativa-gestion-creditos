@@ -19,6 +19,19 @@ interface AuthContextValue {
   hasPermission: (permission: string) => boolean;
 }
 
+// Misma clave que IdleTimeout: al iniciar sesión hay que marcar actividad "ahora";
+// si quedara la marca vieja de una sesión anterior, IdleTimeout cerraría la
+// sesión recién abierta en el acto (incidente 2026-10-16).
+const LAST_ACTIVITY_KEY = "lastActivityAt";
+function setLastActivity(value: number | null) {
+  try {
+    if (value === null) localStorage.removeItem(LAST_ACTIVITY_KEY);
+    else localStorage.setItem(LAST_ACTIVITY_KEY, String(value));
+  } catch {
+    /* sin almacenamiento */
+  }
+}
+
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -49,6 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
     localStorage.setItem("accessToken", data.accessToken);
     localStorage.setItem("refreshToken", data.refreshToken);
+    setLastActivity(Date.now());
     setUser(data.user);
     setJustLoggedIn(true);
   }
@@ -63,6 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       localStorage.removeItem("accessToken");
       localStorage.removeItem("refreshToken");
+      setLastActivity(null);
       setUser(null);
       setJustLoggedIn(false);
     }

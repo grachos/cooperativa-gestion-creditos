@@ -435,6 +435,7 @@ Lo que ya está en el código (§3.13) permite diagnosticar; falta lo que avisa 
 
 | Fecha | Cambio |
 |---|---|
+| 2026-10-16 | Corrección del cambio anterior: el login no renovaba la marca `lastActivityAt`, así que con una marca vieja en el navegador `IdleTimeout` expulsaba al usuario justo después de entrar ("sesión expirada" en bucle). Ahora `login()` la pone en "ahora" y `logout()` la borra; prueba `AuthContext.test.tsx` (falla sin la corrección). |
 | 2026-10-16 | Sesión: al abrir la app se reiniciaba el reloj de inactividad y una sesión de 5 días seguía abierta. Ahora `IdleTimeout` cierra al abrir si la última actividad supera 10 min, y el refresh token por defecto pasa de 7 d a 12 h. No es de rendimiento; se anota por ser un cambio de comportamiento de producción. |
 | 2026-10-13 | Página Reportes: tabla de cuotas vencidas paginada (25 por página, `/reports/overdue?page=&pageSize=` con `total`; sin `page` conserva la respuesta completa) y exportación de pagos con rango Desde/Hasta (usa `?from=&to=`). Limitación: el servidor aún calcula la lista completa y la corta en memoria (cacheada 60 s); no se midió con volumen nuevo. |
 | 2026-10-13 | Bloque 3: índices medidos con EXPLAIN sobre 1,5 M de filas (migración 022, auditoría 527 → 0,6 ms); caché de reportes con coalescencia (20 usuarios: 21,9 s → 5,5 s, sin bloquear al resto); `pagos.csv` por tramos con filtros y escapado de CSV (SEC-010); observabilidad (id de petición, log estructurado, consultas lentas, `/admin/metrics`, errores no capturados); herramienta `explain-bench.mjs`; `TEST_DB=1`. |
