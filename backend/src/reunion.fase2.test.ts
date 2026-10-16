@@ -149,7 +149,9 @@ describe.skipIf(process.env.TEST_DB !== "1")("Fase 2 de la reunión: permisos po
     // sin el permiso de administrar usuarios no se pueden tocar casillas
     const tk = await loginAs(other.username);
     expect((await callAs(tk, "PUT", `/users/${other.id}/permissions`, { permissions: ["reports:read", "users:write"] })).status).toBe(403);
-    expect((await call("GET", "/users/permissions")).body.data.map((p: any) => p.code)).toContain("applications:review");
+    const catalog = (await call("GET", "/users/permissions")).body.data as Array<{ module: string; actions: Array<{ code: string; label: string }> }>;
+    expect(catalog.map((m) => m.module)).toEqual(expect.arrayContaining(["associates", "applications", "credits", "payments", "reports", "audit"]));
+    expect(catalog.flatMap((m) => m.actions.map((a) => a.code))).toContain("applications:review");
   });
 
   it("referencias: se registra quién las verificó y el resultado; solo en solicitudes abiertas", async () => {
@@ -233,7 +235,7 @@ describe.skipIf(process.env.TEST_DB !== "1")("Fase 2 de la reunión: permisos po
     expect(csv.status).toBe(200);
     expect(csv.headers.get("content-type")).toContain("text/csv");
     const lines = csv.text.replace(/^\uFEFF/, "").trimEnd().split("\n");
-    expect(lines[0]).toBe("id,fecha,usuario,entidad,id_entidad,accion,motivo,ip");
+    expect(lines[0]).toBe("id,fecha,usuario,accion,detalle,sobre,motivo,ip");
     expect(lines).toHaveLength(1 + mine.body.total);
 
     // sin audit:read no se ve la actividad

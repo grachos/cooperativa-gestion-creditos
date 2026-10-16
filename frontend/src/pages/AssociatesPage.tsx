@@ -52,7 +52,7 @@ export default function AssociatesPage() {
     <div>
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-xl font-semibold text-slate-800">Asociados</h1>
-        {hasPermission("associates:write") && (
+        {hasPermission("associates:create") && (
           <button
             onClick={() => setShowForm((v) => !v)}
             className="flex items-center gap-2 rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700"

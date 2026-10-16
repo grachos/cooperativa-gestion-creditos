@@ -552,6 +552,31 @@ no tuvo que confirmarlo; se ajusta cuando quiera):
   reversar** desde la aplicación (el descuento ya modificó las cuotas).
 - `GET /payments/quote?creditId=&date=&discountPercent=` entrega lo sugerido (mora, notificación, cancelación).
 
+## Permisos por módulo y visor de actividad (ajuste del 2026-10-16)
+
+- **Permisos por módulo y acción.** En Usuarios, cada persona tiene el botón **"Permisos por módulo"**: una
+  tarjeta por módulo (Asociados, Solicitudes, Créditos, Pagos, Mora y descuentos, Cobranza, Alertas, Reportes,
+  Actividad, Parámetros, Usuarios, Integración) con una casilla por acción (ver, crear, editar, cancelar, revisar,
+  aprobar, desembolsar, refinanciar, registrar/verificar/reversar pagos, cancelar por pago anticipado, exportar…)
+  y los atajos "Todo" / "Ninguno". Catálogo en `backend/src/shared/permissionCatalog.ts`
+  (`GET /users/permissions`). El rol da los permisos de partida; lo que se marca o desmarca solo afecta a ese
+  usuario (`PUT /users/:id/permissions`).
+- **Nuevos permisos:** `associates:read|create|update|documents` (reemplazan a `associates:write`),
+  `applications:read|cancel`, `credits:read|refinance`, `payments:verify|reverse|payoff`, `alerts:read`,
+  `reports:export`. Ahora **ver** cada módulo es un permiso: sin él la API responde 403 y el menú no lo muestra.
+  Los roles existentes conservan todo lo que podían hacer (se asigna en `seed_base.sql` en cada arranque).
+- **Visor "Actividad"** (menú Actividad, permiso `audit:read`; el administrador y la contadora lo tienen, a los
+  demás se les marca la casilla de *Actividad por usuario*): cada línea dice en palabras qué hizo la persona
+  ("Aprobó la solicitud (monto $…)", "Dio un descuento de $…", "Autorizó el cobro de mora…", "Canceló el crédito
+  por pago anticipado…"), sobre qué crédito/solicitud/persona (con enlace) y con el motivo; "Ver detalle" muestra
+  los valores antes/después. Filtros: usuario, acción, módulo, fechas, número de crédito, y búsqueda libre;
+  atajos de un clic ("Quién aprobó o rechazó", "Descuentos y ajustes", "Desembolsos y refinanciaciones"…).
+  Desde el crédito, la solicitud o el asociado, el enlace "Ver historial de actividad" abre el visor ya filtrado.
+  `GET /audit` (filtros `userId`, `action` con varias separadas por coma, `entity`, `from`, `to`, `credit`,
+  `application`, `associate`, `q`) y `GET /audit/export.csv`.
+- Solo queda en la actividad lo que se hizo desde el 16 de octubre en adelante para revisión de documentos,
+  referencias, permisos, pagos verificados y gestiones; lo anterior no tenía registro.
+
 ## Escalabilidad y concurrencia
 
 Diagnóstico de escalabilidad, cambios realizados, mediciones y pendientes:

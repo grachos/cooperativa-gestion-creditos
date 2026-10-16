@@ -3,7 +3,7 @@ import { pool } from "../../db/pool.js";
 import { associateSchema, associateStatusSchema, documentCheckSchema, idParam, paginationQuery } from "../../shared/schemas.js";
 import { isKnownDocument, loadChecklist } from "../../utils/documentChecklist.js";
 import { asyncHandler, HttpError } from "../../middlewares/error.middleware.js";
-import { requireAuth, requirePermission } from "../../middlewares/auth.middleware.js";
+import { requireAnyPermission, requireAuth, requirePermission } from "../../middlewares/auth.middleware.js";
 import { recordAudit } from "../audit/audit.service.js";
 import { isAdult } from "../../utils/age.js";
 import { idempotent } from "../../middlewares/idempotent.js";
@@ -13,6 +13,7 @@ associatesRouter.use(requireAuth);
 
 associatesRouter.get(
   "/",
+  requireAnyPermission("associates:read", "applications:write"), // el selector de titular/codeudor de una solicitud también lo usa
   asyncHandler(async (req, res) => {
     const { page, pageSize } = paginationQuery.parse(req.query);
     const search = (req.query.search as string | undefined)?.trim();
@@ -47,6 +48,7 @@ associatesRouter.get(
 
 associatesRouter.get(
   "/:id",
+  requirePermission("associates:read"),
   asyncHandler(async (req, res) => {
     const { id } = idParam.parse(req.params);
     const [rows] = await pool.query<any[]>(`SELECT * FROM associates WHERE id = ?`, [id]);
@@ -74,6 +76,7 @@ associatesRouter.get(
 // Lista de chequeo de documentos del asociado: cuáles tiene la cooperativa (los archivos no se suben).
 associatesRouter.get(
   "/:id/documents",
+  requirePermission("associates:read"),
   asyncHandler(async (req, res) => {
     const { id } = idParam.parse(req.params);
     const [rows] = await pool.query<any[]>(`SELECT id FROM associates WHERE id = ?`, [id]);
@@ -84,7 +87,7 @@ associatesRouter.get(
 
 associatesRouter.put(
   "/:id/documents",
-  requirePermission("associates:write"),
+  requirePermission("associates:documents"),
   asyncHandler(async (req, res) => {
     const { id } = idParam.parse(req.params);
     const { documentType, held, notes } = documentCheckSchema.parse(req.body);
@@ -113,7 +116,7 @@ associatesRouter.put(
 
 associatesRouter.post(
   "/",
-  requirePermission("associates:write"),
+  requirePermission("associates:create"),
   idempotent("associates.create"),
   asyncHandler(async (req, res) => {
     const data = associateSchema.parse(req.body);
@@ -176,7 +179,7 @@ associatesRouter.post(
 
 associatesRouter.put(
   "/:id",
-  requirePermission("associates:write"),
+  requirePermission("associates:update"),
   asyncHandler(async (req, res) => {
     const { id } = idParam.parse(req.params);
     const data = associateSchema.partial().parse(req.body);
@@ -243,7 +246,7 @@ associatesRouter.put(
 
 associatesRouter.post(
   "/:id/status",
-  requirePermission("associates:write"),
+  requirePermission("associates:update"),
   asyncHandler(async (req, res) => {
     const { id } = idParam.parse(req.params);
     const { status } = associateStatusSchema.parse(req.body);

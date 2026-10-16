@@ -17,12 +17,37 @@ const PERMISSIONS = [
   "reports:read",
   "adjustments:write",
   "collections:write",
-  "users:write"
+  "users:write",
+  "associates:read",
+  "associates:create",
+  "associates:update",
+  "associates:documents",
+  "applications:read",
+  "applications:cancel",
+  "credits:read",
+  "credits:refinance",
+  "payments:verify",
+  "payments:reverse",
+  "payments:payoff",
+  "alerts:read",
+  "reports:export"
 ];
 
 const ROLES: Record<string, string[]> = {
   ADMIN: PERMISSIONS,
   OPERADOR: [
+    "associates:read",
+    "associates:create",
+    "associates:update",
+    "associates:documents",
+    "applications:read",
+    "applications:cancel",
+    "credits:read",
+    "payments:verify",
+    "payments:reverse",
+    "payments:payoff",
+    "alerts:read",
+    "reports:export",
     "associates:write",
     "applications:write",
     "payments:write",
@@ -30,9 +55,9 @@ const ROLES: Record<string, string[]> = {
     "reports:read",
     "collections:write"
   ],
-  APROBADOR: ["applications:approve", "applications:review", "disbursements:write", "reports:read", "adjustments:write"],
-  CONTADORA: ["integration:write", "reports:read", "audit:read"],
-  CONSULTA: ["reports:read"]
+  APROBADOR: ["associates:read", "applications:read", "credits:read", "alerts:read", "credits:refinance", "reports:export", "applications:approve", "applications:review", "disbursements:write", "reports:read", "adjustments:write"],
+  CONTADORA: ["integration:write", "reports:read", "audit:read", "associates:read", "applications:read", "credits:read", "alerts:read", "reports:export"],
+  CONSULTA: ["reports:read", "associates:read", "applications:read", "credits:read", "alerts:read", "reports:export"]
 };
 
 async function upsertRolesAndPermissions() {

@@ -187,7 +187,7 @@ paymentsRouter.get(
 
 paymentsRouter.post(
   "/early-payoff",
-  requirePermission("payments:write"),
+  requirePermission("payments:payoff"),
   idempotent("payments.early-payoff", { transactional: true }),
   asyncHandler(async (req, res) => {
     const data = earlyPayoffSchema.parse(req.body);
@@ -269,7 +269,7 @@ paymentsRouter.post(
 /** Marca un pago ya registrado como verificado en banco con soporte archivado (o quita la marca). */
 paymentsRouter.put(
   "/:id/verified",
-  requirePermission("payments:write"),
+  requirePermission("payments:verify"),
   asyncHandler(async (req, res) => {
     const { id } = idParam.parse(req.params);
     const verified = req.body?.verified !== false;
@@ -291,7 +291,7 @@ paymentsRouter.put(
 
 paymentsRouter.post(
   "/:id/reverse",
-  requirePermission("payments:write"),
+  requirePermission("payments:reverse"),
   asyncHandler(async (req, res) => {
     const { id } = idParam.parse(req.params);
     const { reason } = reversalSchema.parse(req.body);

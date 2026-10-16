@@ -2,7 +2,7 @@ import { Router } from "express";
 import { pool } from "../../db/pool.js";
 import { societySchema, idParam, paginationQuery } from "../../shared/schemas.js";
 import { asyncHandler, HttpError } from "../../middlewares/error.middleware.js";
-import { requireAuth, requirePermission } from "../../middlewares/auth.middleware.js";
+import { requireAnyPermission, requireAuth, requirePermission } from "../../middlewares/auth.middleware.js";
 import { recordAudit } from "../audit/audit.service.js";
 import { idempotent } from "../../middlewares/idempotent.js";
 
@@ -11,6 +11,7 @@ societiesRouter.use(requireAuth);
 
 societiesRouter.get(
   "/",
+  requireAnyPermission("associates:read", "applications:write"),
   asyncHandler(async (req, res) => {
     const { page, pageSize } = paginationQuery.parse(req.query);
     const search = (req.query.search as string | undefined)?.trim();
@@ -29,6 +30,7 @@ societiesRouter.get(
 
 societiesRouter.get(
   "/:id",
+  requireAnyPermission("associates:read", "applications:write"),
   asyncHandler(async (req, res) => {
     const { id } = idParam.parse(req.params);
     const [rows] = await pool.query<any[]>(`SELECT * FROM societies WHERE id = ?`, [id]);
@@ -40,7 +42,7 @@ societiesRouter.get(
 
 societiesRouter.post(
   "/",
-  requirePermission("associates:write"),
+  requirePermission("associates:create"),
   idempotent("societies.create"),
   asyncHandler(async (req, res) => {
     const data = societySchema.parse(req.body);

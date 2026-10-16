@@ -4,6 +4,7 @@ import { api, downloadFile } from "../lib/api";
 import { formatCurrency, formatDate, formatPercent } from "../lib/format";
 import { Loading, ErrorView, EmptyView } from "../components/StateViews";
 import { TabBar, CrossfadePanels } from "../components/Tabs";
+import { useAuth } from "../context/AuthContext";
 
 function downloadCsv(filename: string, header: string[], rows: (string | number)[][]) {
   const csv = [header, ...rows]
@@ -412,6 +413,8 @@ export default function ReportsPage() {
     );
   }, [monthlyQuery.data]);
 
+  const { hasPermission } = useAuth();
+  const canExport = hasPermission("reports:export");
   const TABS = [
     { key: "monthly", label: "Reporte mensual" },
     { key: "detail", label: "Detalle por crédito" },
@@ -419,7 +422,7 @@ export default function ReportsPage() {
     { key: "mora", label: "Mora por bucket" },
     { key: "overdue", label: "Cuotas vencidas" },
     { key: "seller", label: "Por asesor" },
-    { key: "export", label: "Exportar pagos" }
+    ...(canExport ? ([{ key: "export", label: "Exportar pagos" }] as const) : [])
   ] as const;
   const [tab, setTab] = useState<(typeof TABS)[number]["key"]>("monthly");
   const [exportFrom, setExportFrom] = useState("");
@@ -475,7 +478,8 @@ export default function ReportsPage() {
             <button
               type="button"
               onClick={downloadMonthlySummaryCsv}
-              disabled={!monthlyQuery.data?.data.length}
+              disabled={(!monthlyQuery.data?.data.length) || !canExport}
+              title={canExport ? undefined : "No tiene permiso para exportar"}
               className="rounded-md border border-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50"
             >
               Exportar CSV
@@ -593,7 +597,8 @@ export default function ReportsPage() {
             <button
               type="button"
               onClick={downloadDetailCsv}
-              disabled={filteredDetailRows.length === 0}
+              disabled={(filteredDetailRows.length === 0) || !canExport}
+              title={canExport ? undefined : "No tiene permiso para exportar"}
               className="rounded-md border border-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50"
             >
               Exportar CSV
@@ -706,7 +711,8 @@ export default function ReportsPage() {
             <button
               type="button"
               onClick={downloadDueCsv}
-              disabled={!dueQuery.data?.data.length}
+              disabled={(!dueQuery.data?.data.length) || !canExport}
+              title={canExport ? undefined : "No tiene permiso para exportar"}
               className="rounded-md border border-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50"
             >
               Exportar CSV
@@ -748,7 +754,8 @@ export default function ReportsPage() {
           <button
             type="button"
             onClick={downloadMoraBucketsCsv}
-            disabled={!moraBucketsQuery.data?.data.length}
+            disabled={(!moraBucketsQuery.data?.data.length) || !canExport}
+            title={canExport ? undefined : "No tiene permiso para exportar"}
             className="rounded-md border border-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50"
           >
             Exportar CSV
@@ -783,7 +790,8 @@ export default function ReportsPage() {
           <button
             type="button"
             onClick={downloadOverdueCsv}
-            disabled={!overdueQuery.data?.data.length}
+            disabled={(!overdueQuery.data?.data.length) || !canExport}
+            title={canExport ? undefined : "No tiene permiso para exportar"}
             className="rounded-md border border-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50"
           >
             Exportar CSV

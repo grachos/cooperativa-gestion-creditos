@@ -331,7 +331,7 @@ function EditAssociateForm({ data, onDone }: { data: AssociateDetail; onDone: ()
 export default function AssociateDetailPage() {
   const { id } = useParams();
   const { hasPermission } = useAuth();
-  const canWrite = hasPermission("associates:write");
+  const canWrite = hasPermission("associates:update");
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [statusError, setStatusError] = useState<string | null>(null);
@@ -377,6 +377,11 @@ export default function AssociateDetailPage() {
         <span className={`rounded-full px-2 py-0.5 text-xs ${STATUS_STYLES[data.status] ?? "bg-slate-100 text-slate-500"}`}>
           {data.status}
         </span>
+        {hasPermission("audit:read") && (
+          <Link to={`/actividad?associate=${data.id}`} className="text-xs text-brand-700 hover:underline">
+            Ver historial de actividad
+          </Link>
+        )}
         {canWrite && !editing && (
           <div className="flex gap-2">
             {data.status !== "ACTIVO" && (
@@ -455,7 +460,7 @@ export default function AssociateDetailPage() {
       <DocumentChecklist
         title="Documentos del asociado"
         path={`/associates/${data.id}/documents`}
-        canEdit={hasPermission("associates:write")}
+        canEdit={hasPermission("associates:documents")}
         hint="Marque los documentos que la cooperativa tiene (en físico o digital). La lista se configura en Parámetros › documentos_asociado."
       />
 

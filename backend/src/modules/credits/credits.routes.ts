@@ -152,6 +152,7 @@ creditsRouter.post(
 
 creditsRouter.get(
   "/",
+  requirePermission("credits:read"),
   asyncHandler(async (req, res) => {
     const { page, pageSize } = paginationQuery.parse(req.query);
     const status = req.query.status as string | undefined;
@@ -207,6 +208,7 @@ creditsRouter.get(
 
 creditsRouter.get(
   "/:id",
+  requirePermission("credits:read"),
   asyncHandler(async (req, res) => {
     const { id } = idParam.parse(req.params);
     const [rows] = await pool.query<any[]>(
@@ -318,7 +320,7 @@ creditsRouter.get(
 
 creditsRouter.post(
   "/:id/refinance",
-  requirePermission("disbursements:write"),
+  requirePermission("credits:refinance"),
   idempotent("credits.refinance", { transactional: true }),
   asyncHandler(async (req, res) => {
       const { id } = idParam.parse(req.params);

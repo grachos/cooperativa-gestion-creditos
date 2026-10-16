@@ -41,7 +41,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   const [liveAlertCount, setLiveAlertCount] = useState(0);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !user.permissions.includes("alerts:read")) return;
     const token = localStorage.getItem("accessToken");
     if (!token) return;
 

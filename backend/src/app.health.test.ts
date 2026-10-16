@@ -109,7 +109,7 @@ describe("métricas de administración y errores con id de petición", () => {
   it("un error 500 devuelve el requestId (el mismo de X-Request-Id) para rastrearlo en los logs", async () => {
     const { pool } = await import("./db/pool.js");
     vi.spyOn(pool, "query").mockRejectedValue(new Error("fallo simulado de base de datos"));
-    const t = await token(["associates:write", "reports:read"]);
+    const t = await token(["associates:read", "reports:read"]);
     const res = await fetch(`${base2}/api/v1/associates`, { headers: { Authorization: `Bearer ${t}`, "x-request-id": "ref-prueba-12345" } });
     expect(res.status).toBe(500);
     const body = (await res.json()) as any;

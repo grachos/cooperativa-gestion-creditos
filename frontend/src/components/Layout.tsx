@@ -21,12 +21,12 @@ import { IdleTimeout } from "./IdleTimeout";
 const NOTIF_BANNER_DISMISSED_KEY = "notif_banner_dismissed";
 
 const NAV_ITEMS: Array<{ to: string; label: string; icon: typeof Users; permission?: string }> = [
-  { to: "/", label: "Tablero", icon: LayoutDashboard },
-  { to: "/asociados", label: "Asociados", icon: Users },
-  { to: "/solicitudes", label: "Solicitudes", icon: FileText },
-  { to: "/creditos", label: "Créditos", icon: Landmark },
-  { to: "/alertas", label: "Alertas", icon: Bell },
-  { to: "/reportes", label: "Reportes", icon: BarChart3 },
+  { to: "/", label: "Tablero", icon: LayoutDashboard, permission: "reports:read" },
+  { to: "/asociados", label: "Asociados", icon: Users, permission: "associates:read" },
+  { to: "/solicitudes", label: "Solicitudes", icon: FileText, permission: "applications:read" },
+  { to: "/creditos", label: "Créditos", icon: Landmark, permission: "credits:read" },
+  { to: "/alertas", label: "Alertas", icon: Bell, permission: "alerts:read" },
+  { to: "/reportes", label: "Reportes", icon: BarChart3, permission: "reports:read" },
   { to: "/parametros", label: "Parámetros", icon: Settings },
   { to: "/usuarios", label: "Usuarios", icon: UserCog },
   { to: "/actividad", label: "Actividad", icon: History, permission: "audit:read" }

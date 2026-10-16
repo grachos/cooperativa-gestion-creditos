@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { Link, useParams, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useIdempotentSubmit } from "../hooks/useIdempotentSubmit";
@@ -278,6 +278,14 @@ export default function ApplicationDetailPage() {
       <h1 className="mb-1 text-xl font-semibold text-slate-800">Solicitud #{data.id}</h1>
       <p className="mb-1 text-sm text-slate-400">Estado actual: {data.status}</p>
       <p className="mb-4 text-xs text-slate-400">
+        {hasPermission("audit:read") && (
+          <>
+            <Link to={`/actividad?application=${data.id}`} className="text-brand-700 hover:underline">
+              Ver historial de actividad
+            </Link>
+            {" · "}
+          </>
+        )}
         Radicada por {data.created_by_name ?? "—"} · {formatDateTime(data.created_at)}
         {data.decided_by_name && (
           <>

@@ -38,7 +38,20 @@ INSERT INTO permissions (code, description) VALUES
   ('reports:read', NULL),
   ('adjustments:write', NULL),
   ('collections:write', NULL),
-  ('users:write', 'Crear y administrar usuarios del sistema')
+  ('users:write', 'Crear y administrar usuarios del sistema'),
+  ('associates:read', NULL),
+  ('associates:create', NULL),
+  ('associates:update', NULL),
+  ('associates:documents', NULL),
+  ('applications:read', NULL),
+  ('applications:cancel', NULL),
+  ('credits:read', NULL),
+  ('credits:refinance', NULL),
+  ('payments:verify', NULL),
+  ('payments:reverse', NULL),
+  ('payments:payoff', NULL),
+  ('alerts:read', NULL),
+  ('reports:export', NULL)
 ON DUPLICATE KEY UPDATE code = code;
 
 -- Permisos por rol
@@ -61,6 +74,27 @@ WHERE r.code = 'CONTADORA';
 INSERT IGNORE INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id FROM roles r JOIN permissions p ON p.code IN ('alerts:write', 'applications:write', 'associates:write', 'collections:write', 'payments:write', 'reports:read')
 WHERE r.code = 'OPERADOR';
+
+-- Permisos por módulo (reunión 2026-10-16): cada rol conserva lo que ya podía hacer.
+INSERT IGNORE INTO role_permissions (role_id, permission_id)
+SELECT r.id, p.id FROM roles r JOIN permissions p ON p.code IN ('associates:read', 'associates:create', 'associates:update', 'associates:documents', 'applications:read', 'applications:cancel', 'credits:read', 'credits:refinance', 'payments:verify', 'payments:reverse', 'payments:payoff', 'alerts:read', 'reports:export')
+WHERE r.code = 'ADMIN';
+
+INSERT IGNORE INTO role_permissions (role_id, permission_id)
+SELECT r.id, p.id FROM roles r JOIN permissions p ON p.code IN ('associates:read', 'associates:create', 'associates:update', 'associates:documents', 'applications:read', 'applications:cancel', 'credits:read', 'credits:refinance', 'payments:verify', 'payments:reverse', 'payments:payoff', 'alerts:read', 'reports:export')
+WHERE r.code = 'OPERADOR';
+
+INSERT IGNORE INTO role_permissions (role_id, permission_id)
+SELECT r.id, p.id FROM roles r JOIN permissions p ON p.code IN ('associates:read', 'applications:read', 'credits:read', 'alerts:read', 'credits:refinance', 'reports:export')
+WHERE r.code = 'APROBADOR';
+
+INSERT IGNORE INTO role_permissions (role_id, permission_id)
+SELECT r.id, p.id FROM roles r JOIN permissions p ON p.code IN ('associates:read', 'applications:read', 'credits:read', 'alerts:read', 'reports:export')
+WHERE r.code = 'CONTADORA';
+
+INSERT IGNORE INTO role_permissions (role_id, permission_id)
+SELECT r.id, p.id FROM roles r JOIN permissions p ON p.code IN ('associates:read', 'applications:read', 'credits:read', 'alerts:read', 'reports:export')
+WHERE r.code = 'CONSULTA';
 
 -- Parámetros del sistema
 INSERT INTO parameters (`key`, value, description) VALUES

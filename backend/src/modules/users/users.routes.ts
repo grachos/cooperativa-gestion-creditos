@@ -7,6 +7,7 @@ import { asyncHandler, HttpError } from "../../middlewares/error.middleware.js";
 import { createUserSchema, updateUserSchema, idParam } from "../../shared/schemas.js";
 import { recordAudit } from "../audit/audit.service.js";
 import { idempotent } from "../../middlewares/idempotent.js";
+import { CATALOG_CODES, PERMISSION_CATALOG } from "../../shared/permissionCatalog.js";
 
 export const usersRouter = Router();
 usersRouter.use(requireAuth);
@@ -96,8 +97,16 @@ usersRouter.get(
   "/permissions",
   requirePermission("users:write"),
   asyncHandler(async (_req, res) => {
-    const [rows] = await pool.query<any[]>(`SELECT code, description FROM permissions ORDER BY code ASC`);
-    res.json({ data: rows });
+    const [rows] = await pool.query<any[]>(`SELECT code FROM permissions`);
+    const existing = new Set((rows as any[]).map((r) => r.code as string));
+    // Agrupado por módulo; solo permisos que existen en la base y que el sistema realmente verifica.
+    res.json({
+      data: PERMISSION_CATALOG.map((m) => ({
+        module: m.module,
+        label: m.label,
+        actions: m.actions.filter((a) => existing.has(a.code))
+      })).filter((m) => m.actions.length > 0)
+    });
   })
 );
 
@@ -151,7 +160,7 @@ usersRouter.get(
       data: (rows as any[]).map((r) => ({
         ...r,
         role_codes: r.role_codes ? String(r.role_codes).split(",") : [],
-        permissions: [...(effective.get(r.id) ?? [])].sort()
+        permissions: [...(effective.get(r.id) ?? [])].filter((c) => CATALOG_CODES.includes(c)).sort()
       }))
     });
   })
@@ -179,7 +188,10 @@ usersRouter.put(
 
     const result = await withTransaction(async (conn) => {
       const [allRows] = await conn.query<any[]>(`SELECT id, code FROM permissions`);
-      const known = new Map((allRows as any[]).map((p) => [p.code as string, p.id as number]));
+      // Solo los permisos del catálogo: los antiguos que el sistema ya no verifica no se tocan.
+      const known = new Map(
+        (allRows as any[]).filter((p) => CATALOG_CODES.includes(p.code)).map((p) => [p.code as string, p.id as number])
+      );
       const unknown = permissions.filter((p) => !known.has(p));
       if (unknown.length > 0) throw new HttpError(400, `Permisos desconocidos: ${unknown.join(", ")}`);
 

@@ -77,6 +77,7 @@ async function requireCredit(id: number) {
 
 collectionsRouter.get(
   "/:id/legal-documents",
+  requirePermission("credits:read"),
   asyncHandler(async (req, res) => {
     const { id } = idParam.parse(req.params);
     await requireCredit(id);

@@ -1,7 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
-import { permissionLabel } from "../lib/permissions";
 import { Loading, ErrorView } from "../components/StateViews";
 import { useAuth } from "../context/AuthContext";
 import { useParameterList } from "../hooks/useParameterList";
@@ -36,12 +35,17 @@ interface Role {
   name: string;
 }
 
-interface PermissionInfo {
-  code: string;
-  description: string | null;
+interface PermissionModule {
+  module: string;
+  label: string;
+  actions: Array<{ code: string; label: string }>;
 }
 
-function PermissionsPanel({ user, catalog, onSaved }: { user: ManagedUser; catalog: PermissionInfo[]; onSaved: (m: string) => void }) {
+/**
+ * Permisos de un usuario, módulo por módulo: una casilla por acción (ver, crear, editar, aprobar…).
+ * Parte viene de su rol; lo que se marca o desmarca aquí solo afecta a este usuario.
+ */
+export function PermissionsPanel({ user, catalog, onSaved }: { user: ManagedUser; catalog: PermissionModule[]; onSaved: (m: string) => void }) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<string[]>(user.permissions);
@@ -61,33 +65,50 @@ function PermissionsPanel({ user, catalog, onSaved }: { user: ManagedUser; catal
   });
 
   const changed = selected.length !== user.permissions.length || selected.some((p) => !user.permissions.includes(p));
+  const toggle = (code: string) => setSelected((prev) => (prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]));
+  const setModule = (m: PermissionModule, on: boolean) =>
+    setSelected((prev) => {
+      const without = prev.filter((c) => !m.actions.some((a) => a.code === c));
+      return on ? [...without, ...m.actions.map((a) => a.code)] : without;
+    });
 
   return (
     <div className="mt-2">
-      <button type="button" onClick={() => setOpen((v) => !v)} className="text-xs font-medium text-brand-700 hover:underline">
-        {open ? "Ocultar permisos" : `Permisos (${user.permissions.length})`}
+      <button type="button" onClick={() => setOpen((v) => !v)} className="rounded-md border border-brand-200 bg-brand-50 px-2 py-1 text-xs font-medium text-brand-700 hover:bg-brand-100">
+        {open ? "Ocultar permisos" : `Permisos por módulo (${user.permissions.length})`}
       </button>
       {open && (
         <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 p-3">
-          <p className="mb-2 text-xs text-slate-500">
-            Marque lo que esta persona puede hacer. Parte de los permisos viene de su rol; aquí puede agregar o quitar
-            casillas solo para este usuario.
+          <p className="mb-3 text-xs text-slate-500">
+            Marque lo que esta persona puede hacer en cada módulo. Parte de los permisos viene de su rol; los cambios que
+            haga aquí valen solo para este usuario.
           </p>
           {error && <p className="mb-2 rounded-md bg-red-50 p-2 text-xs text-red-700">{error}</p>}
-          <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
-            {catalog.map((p) => (
-              <label key={p.code} className="flex items-start gap-2 text-xs text-slate-700">
-                <input
-                  type="checkbox"
-                  className="mt-0.5"
-                  checked={selected.includes(p.code)}
-                  onChange={() =>
-                    setSelected((prev) => (prev.includes(p.code) ? prev.filter((c) => c !== p.code) : [...prev, p.code]))
-                  }
-                />
-                {permissionLabel(p.code, p.description)}
-              </label>
-            ))}
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            {catalog.map((m) => {
+              const count = m.actions.filter((a) => selected.includes(a.code)).length;
+              return (
+                <fieldset key={m.module} className="rounded-md border border-slate-200 bg-white p-2">
+                  <legend className="px-1 text-xs font-semibold text-slate-700">
+                    {m.label} <span className="font-normal text-slate-400">({count}/{m.actions.length})</span>
+                  </legend>
+                  <div className="mb-1 flex gap-3 text-xs">
+                    <button type="button" onClick={() => setModule(m, true)} className="text-brand-700 hover:underline">
+                      Todo
+                    </button>
+                    <button type="button" onClick={() => setModule(m, false)} className="text-slate-500 hover:underline">
+                      Ninguno
+                    </button>
+                  </div>
+                  {m.actions.map((a) => (
+                    <label key={a.code} className="flex items-start gap-2 py-0.5 text-xs text-slate-700">
+                      <input type="checkbox" className="mt-0.5" checked={selected.includes(a.code)} onChange={() => toggle(a.code)} />
+                      {a.label}
+                    </label>
+                  ))}
+                </fieldset>
+              );
+            })}
           </div>
           <button
             type="button"
@@ -103,7 +124,7 @@ function PermissionsPanel({ user, catalog, onSaved }: { user: ManagedUser; catal
   );
 }
 
-function EditUserRow({ user, roles, permissionCatalog }: { user: ManagedUser; roles: Role[]; permissionCatalog: PermissionInfo[] }) {
+function EditUserRow({ user, roles, permissionCatalog }: { user: ManagedUser; roles: Role[]; permissionCatalog: PermissionModule[] }) {
   const idTypes = useParameterList("tipos_identificacion", DEFAULT_ID_TYPES);
   const queryClient = useQueryClient();
   const [roleCodes, setRoleCodes] = useState(user.role_codes);
@@ -340,7 +361,7 @@ export default function UsersPage() {
   });
   const { data: permissionCatalog } = useQuery({
     queryKey: ["users", "permissions"],
-    queryFn: () => api.get<{ data: PermissionInfo[] }>("/users/permissions"),
+    queryFn: () => api.get<{ data: PermissionModule[] }>("/users/permissions"),
     enabled: canWrite
   });
   const { data: roles } = useQuery({
@@ -437,7 +458,7 @@ export default function UsersPage() {
       {(!canWrite || k === "manage") && (
         <div className="rounded-xl border border-slate-200 bg-white p-4">
           <p className="mb-2 text-sm font-semibold text-slate-700">
-            {canWrite ? "Usuarios (activar/desactivar, roles, contraseña)" : "Usuarios activos"}
+            {canWrite ? "Usuarios (roles, permisos por módulo, contraseña)" : "Usuarios activos"}
           </p>
           {canWrite ? (
             <div className="space-y-2">

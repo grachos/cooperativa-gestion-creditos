@@ -429,6 +429,7 @@ reportsRouter.get(
  */
 reportsRouter.get(
   "/payments.csv",
+  requirePermission("reports:export"),
   asyncHandler(async (req, res) => {
     const date = /^\d{4}-\d{2}-\d{2}$/;
     const from = typeof req.query.from === "string" ? req.query.from : undefined;

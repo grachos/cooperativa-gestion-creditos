@@ -28,6 +28,7 @@ async function transition(
 
 applicationsRouter.get(
   "/",
+  requirePermission("applications:read"),
   asyncHandler(async (req, res) => {
     const { page, pageSize } = paginationQuery.parse(req.query);
     const status = req.query.status as string | undefined;
@@ -112,6 +113,7 @@ async function ensureRequiredDocuments(applicationId: number) {
 
 applicationsRouter.get(
   "/:id",
+  requirePermission("applications:read"),
   asyncHandler(async (req, res) => {
     const { id } = idParam.parse(req.params);
     const [rows] = await pool.query<any[]>(
@@ -521,7 +523,7 @@ applicationsRouter.post(
 
 applicationsRouter.post(
   "/:id/cancel",
-  requirePermission("applications:write"),
+  requirePermission("applications:cancel"),
   asyncHandler(async (req, res) => {
     const { id } = idParam.parse(req.params);
     const [rows] = await pool.query<any[]>(`SELECT status FROM credit_applications WHERE id = ?`, [id]);

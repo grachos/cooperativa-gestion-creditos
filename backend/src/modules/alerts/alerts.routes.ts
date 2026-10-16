@@ -10,7 +10,7 @@ import { recalculateAlerts } from "./alerts.service.js";
 
 export const alertsRouter = Router();
 
-alertsRouter.get("/stream", requireAuth, (req, res) => {
+alertsRouter.get("/stream", requireAuth, requirePermission("alerts:read"), (req, res) => {
   // Tope de conexiones en vivo por proceso: más allá, el cliente reintenta solo.
   if (!canAcceptSseClient()) {
     res.setHeader("Retry-After", "5");
@@ -47,6 +47,7 @@ alertsRouter.use(requireAuth);
 
 alertsRouter.get(
   "/",
+  requirePermission("alerts:read"),
   asyncHandler(async (req, res) => {
     const { page, pageSize } = paginationQuery.parse(req.query);
     const status = (req.query.status as string) || "ABIERTA";

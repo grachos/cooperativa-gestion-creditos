@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useIdempotentSubmit } from "../hooks/useIdempotentSubmit";
@@ -118,6 +118,14 @@ export default function CreditDetailPage() {
         )}
       </p>
       <p className="mb-4 text-sm text-slate-400">
+        {hasPermission("audit:read") && (
+          <>
+            <Link to={`/actividad?credit=${encodeURIComponent(data.credit_number)}`} className="text-brand-700 hover:underline">
+              Ver historial de actividad
+            </Link>
+            {" · "}
+          </>
+        )}
         Gestor: {data.collector_name ?? "Sin asignar"} · Asesor: {data.seller_name ?? "Sin asignar"} · Desembolsó: {data.disbursed_by_name ?? "—"}
         {data.refinanced_from_credit_number && <> · Refinanció a {data.refinanced_from_credit_number}</>}
         {data.refinanced_to_credit_number && <> · Refinanciado en {data.refinanced_to_credit_number}</>}
@@ -141,11 +149,11 @@ export default function CreditDetailPage() {
       {hasPermission("payments:write") && data.status !== "PAGADO" && data.status !== "ANULADO" && (
         <PaymentForm creditId={data.id} onRegistered={() => void queryClient.invalidateQueries({ queryKey: ["credit", id] })} />
       )}
-      {hasPermission("payments:write") && data.status !== "PAGADO" && data.status !== "ANULADO" && (
+      {hasPermission("payments:payoff") && data.status !== "PAGADO" && data.status !== "ANULADO" && (
         <EarlyPayoffForm creditId={data.id} onDone={() => void queryClient.invalidateQueries({ queryKey: ["credit", id] })} />
       )}
 
-      {hasPermission("disbursements:write") && ["VIGENTE", "EN_MORA"].includes(data.status) && (
+      {hasPermission("credits:refinance") && ["VIGENTE", "EN_MORA"].includes(data.status) && (
         <RefinanceForm creditId={data.id} />
       )}
 
@@ -205,7 +213,7 @@ export default function CreditDetailPage() {
                 <th className="px-3 py-2">Registró</th>
                 <th className="px-3 py-2">Estado</th>
                 <th className="px-3 py-2">Verificado en banco</th>
-                {hasPermission("payments:write") && <th className="px-3 py-2" />}
+                {hasPermission("payments:reverse") && <th className="px-3 py-2" />}
               </tr>
             </thead>
             <tbody>
@@ -219,11 +227,11 @@ export default function CreditDetailPage() {
                   <td className="px-3 py-2">
                     <VerifiedCell
                       payment={p}
-                      canEdit={hasPermission("payments:write") && p.status === "CONFIRMADO"}
+                      canEdit={hasPermission("payments:verify") && p.status === "CONFIRMADO"}
                       onDone={() => void queryClient.invalidateQueries({ queryKey: ["credit", id] })}
                     />
                   </td>
-                  {hasPermission("payments:write") && (
+                  {hasPermission("payments:reverse") && (
                     <td className="px-3 py-2">
                       {p.status === "CONFIRMADO" && (
                         <ReverseButton
