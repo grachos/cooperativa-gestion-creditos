@@ -55,6 +55,19 @@ export function IdleTimeout() {
   });
 
   useEffect(() => {
+    // Al abrir la aplicación NO se reinicia la inactividad a ciegas: si el navegador estuvo
+    // cerrado (o la pestaña dormida) más del límite, la sesión ya venció. Antes se
+    // sobrescribía aquí con "ahora" y una sesión de días seguía abierta.
+    let stored = 0;
+    try {
+      stored = Number(localStorage.getItem(LAST_ACTIVITY_KEY)) || 0;
+    } catch {
+      /* sin almacenamiento */
+    }
+    if (stored && Date.now() - stored >= IDLE_LIMIT_MS) {
+      void expireRef.current(true);
+      return;
+    }
     writeLastActivity(Date.now());
 
     function onActivity() {

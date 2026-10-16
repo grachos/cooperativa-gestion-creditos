@@ -353,7 +353,7 @@ antes de pasar a producción (no bloquean el prototipo):
 - [x] Bloqueo de cuenta tras 5 intentos fallidos (15 min) y máximo 3 correos
       de restablecimiento por hora, contados en BD (válido en serverless).
 - [x] Desactivar un usuario revoca su sesión de inmediato.
-- [x] Cierre de sesión tras 10 min de inactividad, con aviso previo.
+- [x] Cierre de sesión tras 10 min de inactividad, con aviso previo. También al volver a abrir la aplicación: si la última actividad (guardada en el navegador) fue hace más de 10 min, se cierra de inmediato (antes el reloj se reiniciaba al abrir y una sesión de días seguía abierta, 2026-10-16). Además el refresh token dura `JWT_REFRESH_EXPIRES_IN` (por defecto 12 h; antes 7 d): es el límite duro aunque el navegador no ejecute el control.
 - [x] Job diario (Vercel Cron, 6:00 a. m. Bogotá) que recalcula días de
       atraso, mora y alertas; protegido con `CRON_SECRET`.
 - [ ] Backups automatizados y cifrado en reposo: dependen del plan de

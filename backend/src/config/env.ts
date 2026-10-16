@@ -20,7 +20,7 @@ const envSchema = z
     JWT_ACCESS_SECRET: z.string().min(10),
     JWT_REFRESH_SECRET: z.string().min(10),
     JWT_ACCESS_EXPIRES_IN: z.string().default("15m"),
-    JWT_REFRESH_EXPIRES_IN: z.string().default("7d"),
+    JWT_REFRESH_EXPIRES_IN: z.string().default("12h"),
     CORS_ORIGIN: z.string().default("http://localhost:5173"),
     TIMEZONE: z.string().default("America/Bogota"),
     CURRENCY: z.string().default("COP"),
