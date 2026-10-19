@@ -601,6 +601,13 @@ no tuvo que confirmarlo; se ajusta cuando quiera):
 - Solo queda en la actividad lo que se hizo desde el 16 de octubre en adelante para revisión de documentos,
   referencias, permisos, pagos verificados y gestiones; lo anterior no tenía registro.
 
+## Carga masiva de asociados (Excel)
+
+Plantilla: [`docs/plantillas/plantilla_asociados.xlsx`](docs/plantillas/plantilla_asociados.xlsx). Una fila por
+asociado (titulares y codeudores), con las mismas reglas que el formulario de la app: documento único por tipo,
+celular de 10 dígitos, correo válido y fecha AAAA-MM-DD. La hoja «Instrucciones» explica cada columna. Las filas
+con error se reportan con su número y motivo; las correctas se cargan.
+
 ## Reglas de pagos y reversos (auditoría de transacciones, 2026-10-19)
 
 - Solo se registran pagos y cancelaciones anticipadas a créditos **VIGENTE o EN_MORA** (un crédito refinanciado,
