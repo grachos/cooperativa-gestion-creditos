@@ -57,6 +57,17 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
       msg: e.message, stack: (e.stack ?? "").split("\n").slice(0, 6).join(" | ")
     })
   );
+  // Regla CHECK de montos violada (migración 028; MariaDB 4025, MySQL 3819): indica un error
+  // del programa, por eso sigue siendo 500 y queda en el log, pero se le explica al usuario que
+  // no se guardó nada (la transacción se revirtió).
+  const errno = (err as { errno?: number }).errno;
+  if (errno === 4025 || errno === 3819) {
+    return res.status(500).json({
+      error: "La operación se rechazó porque dejaría montos inconsistentes. No se guardó nada; informe al administrador.",
+      code: "INTEGRITY_CHECK_FAILED",
+      requestId: req?.id
+    });
+  }
   return res.status(500).json({ error: "Error interno del servidor", requestId: req?.id });
 }
 

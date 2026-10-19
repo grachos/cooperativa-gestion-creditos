@@ -598,6 +598,11 @@ no tuvo que confirmarlo; se ajusta cuando quiera):
 - **Solicitudes:** aprobar, rechazar, cancelar, revisar y desembolsar se aplican de a una por solicitud; si dos personas
   deciden a la vez, la segunda recibe 409. Radicar valida que existan el titular, los codeudores y el asesor (400), no
   acepta al titular como su propio codeudor y, si algo falla, no guarda nada. Cancelar queda en la actividad.
+- **Reglas en la base (migración 028):** la base rechaza pagado > debido, saldos o montos pagados negativos, pagos y
+  líneas de imputación en cero, y ajustes con más pagado que su valor. Si una operación las incumple (sería un error
+  del programa) responde 500 con `code: "INTEGRITY_CHECK_FAILED"` y no guarda nada. Al arrancar, el log muestra la
+  versión de la base y las reglas activas (`[db] …; reglas CHECK activas 10/10`); si falta alguna, lo dice y por qué
+  revisarlo (§3.17).
 - Detalle, mediciones y pendientes en `docs/escalabilidad.md` §3.14. La migración 027 repara los saldos que
   quedaron mal por reversos anteriores.
 

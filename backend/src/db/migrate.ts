@@ -6,6 +6,20 @@ import { env } from "../config/env.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// Reglas CHECK de la migración 028 (docs/escalabilidad.md §3.17).
+const EXPECTED_CHECKS = [
+  "chk_inst_paid_nonneg",
+  "chk_inst_due_nonneg",
+  "chk_inst_balance_nonneg",
+  "chk_inst_principal_le_due",
+  "chk_inst_interest_le_due",
+  "chk_inst_other_le_due",
+  "chk_credit_balance_nonneg",
+  "chk_payment_amount_pos",
+  "chk_alloc_amount_pos",
+  "chk_adj_paid_range"
+];
+
 // Conexión propia con multipleStatements: cada migración trae varias
 // sentencias. El pool de la app NO lo habilita (evita consultas apiladas).
 export async function runMigrations() {
@@ -73,10 +87,33 @@ export async function runMigrations() {
     }
   }
 
+  await reportChecks(conn);
   console.log("Migraciones completadas.");
   } finally {
     await conn.query("SELECT RELEASE_LOCK('coop:migrations')").catch(() => undefined);
     await conn.end();
+  }
+}
+
+/**
+ * La 028 omite una regla CHECK si el servidor no las hace cumplir o si hay datos que la
+ * incumplen (para no tumbar el arranque). Aquí se deja constancia en el log para revisarlo.
+ */
+async function reportChecks(conn: mysql.Connection) {
+  try {
+    const [[ver]] = (await conn.query("SELECT VERSION() AS v")) as any;
+    const [rows] = await conn.query(
+      `SELECT CONSTRAINT_NAME AS name FROM information_schema.TABLE_CONSTRAINTS
+       WHERE CONSTRAINT_SCHEMA = DATABASE() AND CONSTRAINT_TYPE = 'CHECK' AND CONSTRAINT_NAME IN (?)`,
+      [EXPECTED_CHECKS]
+    );
+    const active = new Set((rows as any[]).map((r) => r.name));
+    const missing = EXPECTED_CHECKS.filter((n) => !active.has(n));
+    const msg = `[db] ${ver.v}; reglas CHECK activas ${active.size}/${EXPECTED_CHECKS.length}`;
+    if (missing.length) console.warn(`${msg}. Faltan (versión sin soporte o datos que las incumplen): ${missing.join(", ")}`);
+    else console.log(msg);
+  } catch (err) {
+    console.warn("[db] no se pudo revisar las reglas CHECK", err);
   }
 }
 

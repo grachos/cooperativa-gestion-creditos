@@ -43,6 +43,7 @@ para cientos o miles de usuarios concurrentes. Riesgos principales detectados:
 | 21 | P1 | C | Deadlock entre el job de alertas y pagos/reversos (500); sin reintento | ✅ §3.14 (READ COMMITTED en el job + reintento automático) |
 | 22 | P2 | C | Decisiones sobre solicitudes (aprobar/rechazar/cancelar) y radicación sin transacción ni bloqueo | ✅ §3.15 (H6/H7) |
 | 23 | P2 | R | Clave de idempotencia guardada después del commit (commit ambiguo) | ✅ §3.16 (H8) |
+| 24 | P2 | R | Sin reglas en la base: pagado > debido o saldos negativos solo los impedía el código | ✅ §3.17 (migración 028) |
 
 El detalle de índices recomendados, de caché, de tareas asíncronas y el plan de
 pruebas de carga está en las secciones 6 a 8.
@@ -338,8 +339,8 @@ WHERE c.status IN ('VIGENTE','EN_MORA','PAGADO')
 el nuevo; `db/withTransaction.test.ts` provoca un deadlock real con dos transacciones cruzadas y comprueba el
 reintento (falla con los reintentos en 0).
 
-**Pendiente de la auditoría:** ~~H6~~ y ~~H7~~ (hechos, §3.15), ~~H8~~ (hecho, §3.16), reglas `CHECK` en la base
-(pagado ≤ debido, no negativos) y H9 (la refinanciación suma interés futuro al nuevo capital: regla de negocio a
+**Pendiente de la auditoría:** ~~H6~~ y ~~H7~~ (hechos, §3.15), ~~H8~~ (hecho, §3.16), ~~reglas `CHECK` en la base~~
+(hecho, §3.17) y H9 (la refinanciación suma interés futuro al nuevo capital: regla de negocio a
 confirmar con la cooperativa).
 
 ### 3.15 Solicitudes: decisiones y radicación atómicas (H6, H7, 2026-10-19)
@@ -428,6 +429,41 @@ no deja clave ni pago. Las dos primeras fallan con el código anterior. Suite ba
 **Pendiente:** una caída del proceso **antes** del COMMIT deja la clave `IN_PROGRESS` hasta que vence (el
 reintento recibe `409 IDEMPOTENCY_IN_PROGRESS`): es seguro (no duplica) pero el usuario debe esperar o revisar.
 Las operaciones no transaccionales (tabla del README) conservan el comportamiento anterior.
+
+### 3.17 Reglas CHECK de montos en la base (2026-10-19)
+
+**Problema:** que una cuota no tenga más pagado que lo debido, que los saldos no sean negativos o que no haya
+pagos en cero lo garantizaba solo el código. Los errores H1–H5 (§3.14) dejaron saldos inconsistentes que nada
+detectó hasta la auditoría.
+
+**Arreglo:** migración `028_reglas_check_montos.sql`, 10 reglas:
+
+| Tabla | Regla |
+|---|---|
+| `credit_schedule_installments` | pagados ≥ 0; debidos ≥ 0; `balance` ≥ 0; `principal_paid` ≤ `principal_due`; `interest_paid` ≤ `interest_due`; `other_paid` ≤ `other_due` |
+| `credits` | `principal_balance` ≥ 0 |
+| `payments` | `amount` > 0 |
+| `payment_allocations` | `amount` > 0 |
+| `credit_adjustments` | 0 ≤ `paid_amount` ≤ `amount` |
+
+Para no repetir el incidente de §3.9 (arranque caído por una migración), cada regla se agrega **solo si**: el
+servidor las hace cumplir (MySQL ≥ 8.0.16 o MariaDB ≥ 10.2.1; en versiones anteriores MySQL las ignora), no
+existe ya (repetible), y **ninguna fila actual la incumple**. Si se omite alguna, el arranque lo registra:
+`[db] <versión>; reglas CHECK activas 9/10. Faltan …: chk_…` (`db/migrate.ts`). Ese mismo log muestra por
+primera vez la versión de la base de Hostinger, que no se conocía.
+
+Si una escritura las incumple, la base la rechaza (MariaDB 4025, MySQL 3819), la transacción completa se revierte
+y la API responde 500 con `code: "INTEGRITY_CHECK_FAILED"` y un mensaje claro. Sigue siendo 500 a propósito: es un
+error del programa y queda en el log con su traza.
+
+**Verificación (MariaDB 10.11 local):** (A) aplicada sobre la base de pruebas (32.910 cuotas, 0 incumplimientos):
+10/10; (B) ejecutada dos veces: sin error; (C) interrumpida con 4 de 10 creadas: completa las 6 faltantes;
+(D) `UPDATE` con pagado > debido o saldo negativo: rechazado; (E) base con un pago en 0: se omite solo esa regla,
+se aplican las otras 9 y el arranque avisa. `reglas.check.test.ts` (2). La suite completa (147 pruebas, dos corridas)
+pasa con las reglas activas: ningún flujo de la app las incumple.
+
+**No probado:** MySQL 8 (no hay uno local); la condición de versión y la sintaxis son las documentadas para
+MySQL 8.0.16+. **Pendiente:** revisar el log del primer arranque en Hostinger (versión y 10/10).
 
 ## 4. Cómo verificar
 
@@ -547,6 +583,7 @@ Lo que ya está en el código (§3.13) permite diagnosticar; falta lo que avisa 
 
 | Fecha | Cambio |
 |---|---|
+| 2026-10-19 | Reglas CHECK de montos en la base (migración 028, condicionales por versión y por datos existentes) y aviso en el arranque con la versión de la base (§3.17). |
 | 2026-10-19 | H8: la clave de idempotencia se confirma dentro de la transacción del pago/desembolso/refinanciación/radicación; un error después del COMMIT ya no permite duplicar al reintentar (§3.16). |
 | 2026-10-19 | H6 y H7: decisiones sobre solicitudes con bloqueo y transacción, radicación atómica con validación de participantes (§3.15). |
 | 2026-10-19 | Auditoría de transacciones: H1–H5 corregidos (reverso recalcula saldos, job con escritura condicional, sin pagos a créditos cerrados ni excedentes, sin reversos de refinanciados), migración 027 repara saldos, deadlock job↔reverso eliminado (READ COMMITTED en el job) y reintento automático ante deadlock (§3.14). |
