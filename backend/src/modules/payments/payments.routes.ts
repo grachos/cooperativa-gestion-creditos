@@ -11,7 +11,7 @@ import { recordAudit } from "../audit/audit.service.js";
 import { enqueueIntegrationEvent } from "../integration/integration.service.js";
 import { broadcastEvent } from "../alerts/sse.hub.js";
 import { invalidateReportCache } from "../reports/reportCache.js";
-import { idempotent } from "../../middlewares/idempotent.js";
+import { completeIdempotencyInTransaction, idempotent } from "../../middlewares/idempotent.js";
 
 export const paymentsRouter = Router();
 paymentsRouter.use(requireAuth);
@@ -160,7 +160,9 @@ paymentsRouter.post(
           new Date(data.effectiveDate ?? data.receivedDate)
         );
       }
-      return recordPayment(conn, credit, req.user!.id, req.ip, data);
+      const payment = await recordPayment(conn, credit, req.user!.id, req.ip, data);
+      await completeIdempotencyInTransaction(conn, res, 201, payment);
+      return payment;
     });
 
     invalidateReportCache();
@@ -272,7 +274,9 @@ paymentsRouter.post(
         // p. ej. mora en modo AUTOMATICO que se generó al aplicar el pago: no se deja a medias.
         throw new HttpError(409, "No fue posible cancelar el crédito por completo; revise la política de mora e intente de nuevo");
       }
-      return { ...payment, total: quote.total, discount: quote.discount };
+      const response = { ...payment, total: quote.total, discount: quote.discount };
+      await completeIdempotencyInTransaction(conn, res, 201, response);
+      return response;
     });
 
     invalidateReportCache();

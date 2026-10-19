@@ -6,7 +6,7 @@ import { asyncHandler, HttpError } from "../../middlewares/error.middleware.js";
 import { requireAuth, requirePermission } from "../../middlewares/auth.middleware.js";
 import { recordAudit } from "../audit/audit.service.js";
 import { broadcastEvent } from "../alerts/sse.hub.js";
-import { idempotent } from "../../middlewares/idempotent.js";
+import { completeIdempotencyInTransaction, idempotent } from "../../middlewares/idempotent.js";
 
 export const applicationsRouter = Router();
 applicationsRouter.use(requireAuth);
@@ -358,6 +358,7 @@ applicationsRouter.post(
         userId: req.user!.id,
         ipAddress: req.ip
       });
+      await completeIdempotencyInTransaction(conn, res, 201, { id: newId });
       return newId;
     });
 
@@ -407,6 +408,7 @@ applicationsRouter.post(
         userId: req.user!.id,
         ipAddress: req.ip
       });
+      await completeIdempotencyInTransaction(conn, res, 201, { id: result.insertId });
       return result.insertId as number;
     });
     res.status(201).json({ id: referenceId });

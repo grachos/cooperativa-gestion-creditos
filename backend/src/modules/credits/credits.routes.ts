@@ -10,7 +10,7 @@ import { broadcastEvent } from "../alerts/sse.hub.js";
 import { invalidateReportCache } from "../reports/reportCache.js";
 import { getMoraBucket, loadDelinquencyPolicy, loadMoraBuckets } from "../delinquency/delinquency.service.js";
 import { round2 } from "../../utils/money.js";
-import { idempotent } from "../../middlewares/idempotent.js";
+import { completeIdempotencyInTransaction, idempotent } from "../../middlewares/idempotent.js";
 
 export const creditsRouter = Router();
 creditsRouter.use(requireAuth);
@@ -141,7 +141,9 @@ creditsRouter.post(
         disbursementDate
       });
 
-      return { id: creditId, creditNumber };
+      const response = { id: creditId, creditNumber };
+      await completeIdempotencyInTransaction(conn, res, 201, response);
+      return response;
     });
 
     invalidateReportCache();
@@ -414,7 +416,9 @@ creditsRouter.post(
           refinancedToCreditId: newCreditId
         });
 
-        return { id: newCreditId, creditNumber, refinancedFromCreditId: id };
+        const response = { id: newCreditId, creditNumber, refinancedFromCreditId: id };
+        await completeIdempotencyInTransaction(conn, res, 201, response);
+        return response;
       });
 
     invalidateReportCache();

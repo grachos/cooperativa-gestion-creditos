@@ -29,7 +29,8 @@ hizo, cómo verificarlo y qué queda pendiente. Si algo no se pudo probar, se di
 ## Operaciones de dinero
 - Bloquear con `SELECT … FOR UPDATE` como primera sentencia de la transacción, en el
   orden crédito → pago (ver `docs/escalabilidad.md` §3.1).
-- Los endpoints que crean registros llevan `idempotent(...)` (ver README, "Idempotencia").
+- Los endpoints que crean registros llevan `idempotent(...)` (ver README, "Idempotencia"); si son `transactional: true`, llamar
+  `completeIdempotencyInTransaction(conn, res, 201, cuerpo)` como última sentencia de la transacción.
 - Dentro de `withTransaction` solo trabajo de base de datos: si hay deadlock, la transacción completa se reintenta.
 - Procesos masivos (jobs) que escriben sin bloquear el crédito: sentencias condicionales (`… AND status = <leído>`)
   y en `withReadCommitted`, para no pisar ni bloquear pagos concurrentes (ver `docs/escalabilidad.md` §3.14).

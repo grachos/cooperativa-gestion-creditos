@@ -175,6 +175,9 @@ export function createIdempotency(options: IdempotencyOptions) {
 
   function runOriginal(id: string, req: Request, res: Response, next: NextFunction, opts: OperationOptions) {
     const originalSend = res.send.bind(res);
+    // Para que la ruta pueda confirmar la clave dentro de su propia transacción
+    // (completeIdempotencyInTransaction, hallazgo H8).
+    res.locals.idempotencyKeyId = id;
     let settled = false;
 
     // Todas las respuestas de Express (json, send, sendStatus) pasan por send.
@@ -189,11 +192,14 @@ export function createIdempotency(options: IdempotencyOptions) {
 
       let finish: Promise<void>;
       if (status >= 200 && status < 300) {
-        finish = store.complete(id, status, text, contentType);
+        // Si la ruta ya la confirmó en su transacción, no hace falta otra escritura.
+        finish = res.locals.idempotencyCommitted ? Promise.resolve() : store.complete(id, status, text, contentType);
       } else if (status >= 500 && !opts.transactional) {
         finish = Promise.resolve(); // efecto incierto: se conserva la reserva
       } else {
-        finish = store.release(id); // falló antes del efecto: se puede reintentar
+        // Falló antes del efecto: se puede reintentar. release solo borra reservas IN_PROGRESS: si la
+        // transacción ya había confirmado la clave (COMPLETED), se conserva y el reintento recibe la respuesta original.
+        finish = store.release(id);
       }
       finish
         .catch((err) => log("[idempotency] no se pudo actualizar la clave", err))

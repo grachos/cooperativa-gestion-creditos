@@ -383,11 +383,13 @@ está aplicado solo donde un reintento duplicaría un efecto:
 | Operación | Ruta | Transaccional* |
 |---|---|---|
 | `payments.create` | `POST /payments` | sí |
+| `payments.early-payoff` | `POST /payments/early-payoff` | sí |
 | `credits.disburse` | `POST /credits/applications/:id/disburse` | sí |
 | `credits.refinance` | `POST /credits/:id/refinance` | sí |
 | `credits.adjustment` | `POST /credits/:id/adjustments` | no |
 | `credits.promise` | `POST /credits/:id/promises` | no |
-| `applications.create` | `POST /applications` | no |
+| `applications.create` | `POST /applications` | sí |
+| `applications.reference` | `POST /applications/:id/references` | sí |
 | `associates.create` | `POST /associates` | no |
 | `societies.create` | `POST /societies` | no |
 | `users.create` | `POST /users` | no |
@@ -397,6 +399,13 @@ está aplicado solo donde un reintento duplicaría un efecto:
 efecto y la clave se libera. En las demás un 5xx deja el resultado **incierto**
 (el INSERT pudo confirmarse antes de fallar el registro de auditoría): la clave se
 conserva y el reintento recibe `409 IDEMPOTENCY_IN_PROGRESS` hasta que venza.
+
+En las transaccionales la clave se marca completada **dentro de la misma
+transacción** del efecto (`completeIdempotencyInTransaction`, última sentencia antes
+del COMMIT): si algo falla después del COMMIT y la ruta responde 500, la clave ya
+quedó completada y el reintento recibe la respuesta original en vez de repetir el
+pago (ver `docs/escalabilidad.md` §3.16). Toda ruta nueva transaccional con
+`idempotent(...)` debe llamarla.
 
 No se protegieron las transiciones que el servidor ya rechaza por estado
 (aprobar/rechazar/revisar solicitud, reversar un pago: un segundo intento da 409

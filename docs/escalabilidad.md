@@ -42,7 +42,7 @@ para cientos o miles de usuarios concurrentes. Riesgos principales detectados:
 | 20 | P1 | C | Reverso de pagos de créditos ya refinanciados | ✅ §3.14 |
 | 21 | P1 | C | Deadlock entre el job de alertas y pagos/reversos (500); sin reintento | ✅ §3.14 (READ COMMITTED en el job + reintento automático) |
 | 22 | P2 | C | Decisiones sobre solicitudes (aprobar/rechazar/cancelar) y radicación sin transacción ni bloqueo | ✅ §3.15 (H6/H7) |
-| 23 | P2 | R | Clave de idempotencia guardada después del commit (commit ambiguo) | ⏳ (H8) |
+| 23 | P2 | R | Clave de idempotencia guardada después del commit (commit ambiguo) | ✅ §3.16 (H8) |
 
 El detalle de índices recomendados, de caché, de tareas asíncronas y el plan de
 pruebas de carga está en las secciones 6 a 8.
@@ -338,7 +338,7 @@ WHERE c.status IN ('VIGENTE','EN_MORA','PAGADO')
 el nuevo; `db/withTransaction.test.ts` provoca un deadlock real con dos transacciones cruzadas y comprueba el
 reintento (falla con los reintentos en 0).
 
-**Pendiente de la auditoría:** ~~H6~~ y ~~H7~~ (hechos, §3.15), H8 (guardar la clave de idempotencia dentro de la transacción del negocio), reglas `CHECK` en la base
+**Pendiente de la auditoría:** ~~H6~~ y ~~H7~~ (hechos, §3.15), ~~H8~~ (hecho, §3.16), reglas `CHECK` en la base
 (pagado ≤ debido, no negativos) y H9 (la refinanciación suma interés futuro al nuevo capital: regla de negocio a
 confirmar con la cooperativa).
 
@@ -399,6 +399,35 @@ sobre una base vacía → uno aplicó las 21, el otro 0, sin errores.
 terminen. Si se quiere que una migración fallida no tumbe el sitio, habría que arrancar
 igualmente y marcar `/health` como degradado; se decidió no hacerlo todavía porque
 arrancar con un esquema desactualizado puede dar errores peores.
+
+### 3.16 Clave de idempotencia confirmada en la transacción del negocio (H8, 2026-10-19)
+
+**Problema (confirmado con prueba):** la clave `Idempotency-Key` se marcaba `COMPLETED` en el `res.send`,
+**después** del COMMIT del pago. Si algo fallaba entre el COMMIT y la respuesta (en la prueba: un error al
+avisar a las pantallas; en producción también una caída del proceso o de la conexión), la ruta respondía 500,
+y como la operación es "transaccional" el middleware **liberaba** la clave. El reintento del usuario o del
+navegador (misma clave) volvía a ejecutar todo: **pago duplicado**. Con el código anterior la prueba nueva
+registra dos veces.
+
+**Arreglo:** `completeIdempotencyInTransaction(conn, res, 201, cuerpo)` (`middlewares/idempotent.ts`) hace el
+`UPDATE idempotency_keys SET state='COMPLETED', respuesta…` como **última sentencia de la transacción** del
+negocio. La clave y el efecto se confirman o se revierten juntos:
+- Error después del COMMIT → la clave ya está `COMPLETED`; `release` solo borra reservas `IN_PROGRESS`, así que
+  se conserva y el reintento recibe la respuesta original (`Idempotent-Replayed: true`) sin repetir el pago.
+- Rollback (409, 400, deadlock agotado) → el `UPDATE` también se revierte, la clave sigue `IN_PROGRESS` y se
+  libera: el reintento sí ejecuta.
+- Si la ruta ya confirmó la clave, el `res.send` no hace una segunda escritura.
+- Rutas: `POST /payments`, `/payments/early-payoff`, `/credits/applications/:id/disburse`,
+  `/credits/:id/refinance`, `POST /applications`, `/applications/:id/references`. El `UPDATE` toca solo la fila
+  de la clave (por PK), después de los bloqueos crédito → pago, así que no cambia el orden de bloqueo.
+
+**Verificación:** `idempotencia.transaccion.test.ts` (3): error forzado después del COMMIT en un pago y en una
+radicación → el reintento devuelve 201 repetido y hay un solo registro; un pago que se revierte (excedente, H4)
+no deja clave ni pago. Las dos primeras fallan con el código anterior. Suite backend: 145 pruebas, dos corridas.
+
+**Pendiente:** una caída del proceso **antes** del COMMIT deja la clave `IN_PROGRESS` hasta que vence (el
+reintento recibe `409 IDEMPOTENCY_IN_PROGRESS`): es seguro (no duplica) pero el usuario debe esperar o revisar.
+Las operaciones no transaccionales (tabla del README) conservan el comportamiento anterior.
 
 ## 4. Cómo verificar
 
@@ -518,6 +547,7 @@ Lo que ya está en el código (§3.13) permite diagnosticar; falta lo que avisa 
 
 | Fecha | Cambio |
 |---|---|
+| 2026-10-19 | H8: la clave de idempotencia se confirma dentro de la transacción del pago/desembolso/refinanciación/radicación; un error después del COMMIT ya no permite duplicar al reintentar (§3.16). |
 | 2026-10-19 | H6 y H7: decisiones sobre solicitudes con bloqueo y transacción, radicación atómica con validación de participantes (§3.15). |
 | 2026-10-19 | Auditoría de transacciones: H1–H5 corregidos (reverso recalcula saldos, job con escritura condicional, sin pagos a créditos cerrados ni excedentes, sin reversos de refinanciados), migración 027 repara saldos, deadlock job↔reverso eliminado (READ COMMITTED en el job) y reintento automático ante deadlock (§3.14). |
 | 2026-10-16 | Corrección del cambio anterior: el login no renovaba la marca `lastActivityAt`, así que con una marca vieja en el navegador `IdleTimeout` expulsaba al usuario justo después de entrar ("sesión expirada" en bucle). Ahora `login()` la pone en "ahora" y `logout()` la borra; prueba `AuthContext.test.tsx` (falla sin la corrección). |
