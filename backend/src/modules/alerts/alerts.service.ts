@@ -1,4 +1,4 @@
-import { pool } from "../../db/pool.js";
+import { pool, withReadCommitted, type PoolLike } from "../../db/pool.js";
 import { calculateOverdueDays, getMoraBucket, loadDelinquencyPolicy, loadMoraBuckets } from "../delinquency/delinquency.service.js";
 import { broadcastEvents } from "./sse.hub.js";
 import { invalidateReportCache } from "../reports/reportCache.js";
@@ -49,6 +49,35 @@ interface NewAlert {
   message: string;
 }
 
+export interface InstallmentStateGroup {
+  overdueDays: number;
+  status: string;
+  /** Estado que tenía la cuota cuando el job la leyó. */
+  fromStatus: string;
+  ids: number[];
+}
+
+/**
+ * Guarda días de atraso y estado SOLO si la cuota sigue en el estado que el job leyó (escritura condicional).
+ * El job lee miles de cuotas y escribe después, sin bloquear los créditos: si en ese intervalo entra un pago
+ * que deja la cuota PAGADA o PARCIAL, un UPDATE sin condición la devolvía a VENCIDA (actualización perdida,
+ * hallazgo H2 de la auditoría de transacciones). Con la condición, esa cuota se omite y la próxima corrida la
+ * evalúa con su estado real.
+ */
+export async function persistInstallmentStates(groups: InstallmentStateGroup[], db: PoolLike = pool): Promise<number> {
+  let updated = 0;
+  for (const group of groups) {
+    for (const ids of chunks(group.ids, 1000)) {
+      const [result] = await db.query<any>(
+        `UPDATE credit_schedule_installments SET overdue_days = ?, status = ? WHERE id IN (?) AND status = ?`,
+        [group.overdueDays, group.status, ids, group.fromStatus]
+      );
+      updated += Number(result.affectedRows ?? 0);
+    }
+  }
+  return updated;
+}
+
 async function recalculateAlertsUnlocked(asOf: Date): Promise<{ created: number }> {
   const [policy, buckets] = await Promise.all([loadDelinquencyPolicy(pool), loadMoraBuckets(pool)]);
   // Estados abiertos listados explícitamente (en vez de NOT IN) para poder usar el índice de status.
@@ -59,7 +88,7 @@ async function recalculateAlertsUnlocked(asOf: Date): Promise<{ created: number 
      WHERE csi.status IN ('PENDIENTE','PARCIAL','VENCIDA','EN_MORA') AND c.status NOT IN ('PAGADO','ANULADO')`
   );
 
-  const statusGroups = new Map<string, { overdueDays: number; status: string; ids: number[] }>();
+  const statusGroups = new Map<string, InstallmentStateGroup>();
   const candidates: NewAlert[] = [];
 
   for (const inst of installments as any[]) {
@@ -78,8 +107,8 @@ async function recalculateAlertsUnlocked(asOf: Date): Promise<{ created: number 
           : getMoraBucket(overdueDays, buckets).code === "CD001"
           ? "VENCIDA"
           : "EN_MORA";
-      const key = `${overdueDays}|${newStatus}`;
-      const group = statusGroups.get(key) ?? { overdueDays, status: newStatus, ids: [] as number[] };
+      const key = `${overdueDays}|${newStatus}|${inst.status}`;
+      const group = statusGroups.get(key) ?? { overdueDays, status: newStatus, fromStatus: inst.status, ids: [] as number[] };
       group.ids.push(inst.id);
       statusGroups.set(key, group);
     }
@@ -109,15 +138,9 @@ async function recalculateAlertsUnlocked(asOf: Date): Promise<{ created: number 
   }
 
   // 1) Estados y días de atraso: un UPDATE por cada combinación distinta (no por cuota).
-  for (const group of statusGroups.values()) {
-    for (const ids of chunks(group.ids, 1000)) {
-      await pool.query(`UPDATE credit_schedule_installments SET overdue_days = ?, status = ? WHERE id IN (?)`, [
-        group.overdueDays,
-        group.status,
-        ids
-      ]);
-    }
-  }
+  // Las escrituras del job van en READ COMMITTED (ver withReadCommitted): sin bloqueos de rango que choquen
+  // con los pagos y reversos que se registren mientras el job corre.
+  await withReadCommitted((conn) => persistInstallmentStates([...statusGroups.values()], conn));
 
   // 2) Alertas nuevas: una sola lectura de las abiertas y inserciones por lotes.
   const [openRows] = await pool.query<any[]>(
@@ -142,21 +165,23 @@ async function recalculateAlertsUnlocked(asOf: Date): Promise<{ created: number 
   }
   broadcastEvents(events);
 
-  // Sincroniza el estado del crédito (VIGENTE/EN_MORA) con sus cuotas.
-  await pool.query(
-    `UPDATE credits c SET status = 'EN_MORA'
-     WHERE status = 'VIGENTE' AND EXISTS (
-       SELECT 1 FROM credit_schedule_installments csi
-       WHERE csi.credit_id = c.id AND csi.status = 'EN_MORA'
-     )`
-  );
-  await pool.query(
-    `UPDATE credits c SET status = 'VIGENTE'
-     WHERE status = 'EN_MORA' AND NOT EXISTS (
-       SELECT 1 FROM credit_schedule_installments csi
-       WHERE csi.credit_id = c.id AND csi.status = 'EN_MORA'
-     )`
-  );
+  // Sincroniza el estado del crédito (VIGENTE/EN_MORA) con sus cuotas (en READ COMMITTED, ver arriba).
+  await withReadCommitted(async (conn) => {
+    await conn.query(
+      `UPDATE credits c SET status = 'EN_MORA'
+       WHERE status = 'VIGENTE' AND EXISTS (
+         SELECT 1 FROM credit_schedule_installments csi
+         WHERE csi.credit_id = c.id AND csi.status = 'EN_MORA'
+       )`
+    );
+    await conn.query(
+      `UPDATE credits c SET status = 'VIGENTE'
+       WHERE status = 'EN_MORA' AND NOT EXISTS (
+         SELECT 1 FROM credit_schedule_installments csi
+         WHERE csi.credit_id = c.id AND csi.status = 'EN_MORA'
+       )`
+    );
+  });
 
   invalidateReportCache(); // cambiaron días de atraso y estados de cuotas/créditos
   return { created };

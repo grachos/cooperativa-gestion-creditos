@@ -4,7 +4,8 @@ import { pool, withTransaction, type PoolConnection } from "../../db/pool.js";
 import { earlyPayoffSchema, paymentSchema, reversalSchema, idParam } from "../../shared/schemas.js";
 import { asyncHandler, HttpError } from "../../middlewares/error.middleware.js";
 import { requireAnyPermission, requireAuth, requirePermission } from "../../middlewares/auth.middleware.js";
-import { allocatePayment } from "./allocation.service.js";
+import { allocatePayment, refreshCreditAfterReversal, refreshInstallments } from "./allocation.service.js";
+import { round2 } from "../../utils/money.js";
 import { applyCharges, computeMoraQuote, computeNotificationQuote, computePayoffQuote } from "./charges.service.js";
 import { recordAudit } from "../audit/audit.service.js";
 import { enqueueIntegrationEvent } from "../integration/integration.service.js";
@@ -60,6 +61,18 @@ async function recordPayment(
   const asOf = new Date(data.effectiveDate ?? data.receivedDate);
   const allocations = await allocatePayment(conn, data.creditId, data.amount, asOf);
 
+  // Todo el dinero recibido debe quedar aplicado: si sobra, el pago supera lo adeudado y se rechaza (rollback),
+  // en vez de guardar un monto que no se refleja en ninguna cuota ni cargo (hallazgo H4).
+  const applied = round2(allocations.reduce((sum, line) => sum + line.amount, 0));
+  if (applied < round2(data.amount) - 0.005) {
+    throw new HttpError(
+      409,
+      applied > 0
+        ? `El pago supera lo adeudado. El máximo que se puede registrar hoy es ${applied}.`
+        : "El crédito no tiene saldo pendiente para aplicar este pago."
+    );
+  }
+
   for (const line of allocations) {
     await conn.query(
       `INSERT INTO payment_allocations (payment_id, installment_id, adjustment_id, concept, amount) VALUES (?, ?, ?, ?, ?)`,
@@ -113,7 +126,9 @@ async function lockCreditForPayment(conn: PoolConnection, creditId: number) {
   const [creditRows] = await conn.query<any[]>(`SELECT * FROM credits WHERE id = ? FOR UPDATE`, [creditId]);
   const credit = (creditRows as any[])[0];
   if (!credit) throw new HttpError(404, "Crédito no encontrado");
-  if (credit.status === "PAGADO" || credit.status === "ANULADO") {
+  // Solo créditos vigentes o en mora: un crédito REFINANCIADO tiene sus cuotas anuladas y el pago quedaba
+  // guardado sin aplicarse a nada (hallazgo H3).
+  if (!["VIGENTE", "EN_MORA"].includes(credit.status)) {
     throw new HttpError(409, "El crédito no admite pagos en su estado actual");
   }
   return credit as { id: number; status: string };
@@ -305,7 +320,12 @@ paymentsRouter.post(
     if (!creditId) throw new HttpError(404, "Pago no encontrado");
 
     await withTransaction(async (conn) => {
-      await conn.query(`SELECT id FROM credits WHERE id = ? FOR UPDATE`, [creditId]);
+      const [creditRows] = await conn.query<any[]>(`SELECT id, status FROM credits WHERE id = ? FOR UPDATE`, [creditId]);
+      // Un crédito refinanciado ya trasladó su saldo al crédito nuevo: reversar un pago del viejo dejaría el nuevo
+      // con menos capital del que correspondía (hallazgo H5). Lo mismo para un crédito anulado.
+      if (!["VIGENTE", "EN_MORA", "PAGADO"].includes((creditRows as any[])[0]?.status)) {
+        throw new HttpError(409, "No se puede reversar un pago de un crédito refinanciado o anulado");
+      }
       const [rows] = await conn.query<any[]>(`SELECT * FROM payments WHERE id = ? FOR UPDATE`, [id]);
       const payment = (rows as any[])[0];
       if (!payment) throw new HttpError(404, "Pago no encontrado");
@@ -332,21 +352,23 @@ paymentsRouter.post(
         }
         const column =
           alloc.concept === "CAPITAL" ? "principal_paid" : alloc.concept === "INTERES" ? "interest_paid" : "late_fee_paid";
-        await conn.query(
-          `UPDATE credit_schedule_installments SET ${column} = ${column} - ?,
-             status = CASE WHEN status = 'PAGADA' THEN 'PARCIAL' ELSE status END
-           WHERE id = ?`,
-          [alloc.amount, alloc.installment_id]
-        );
+        await conn.query(`UPDATE credit_schedule_installments SET ${column} = ${column} - ? WHERE id = ?`, [
+          alloc.amount,
+          alloc.installment_id
+        ]);
       }
+
+      // Saldo y estado de cada cuota tocada, y saldo de capital del crédito, se recalculan desde lo pagado.
+      // Antes el reverso dejaba `principal_balance` y `balance` con el valor del pago reversado y la cuota en
+      // PARCIAL aunque quedara sin abonos (hallazgo H1).
+      const touched = [...new Set((allocations as any[]).filter((a) => a.installment_id).map((a) => a.installment_id as number))];
+      await refreshInstallments(conn, touched, new Date());
 
       await conn.query(
         `UPDATE payments SET status = 'REVERSADO', reversal_reason = ? WHERE id = ?`,
         [reason, id]
       );
-      await conn.query(`UPDATE credits SET status = 'VIGENTE' WHERE id = ? AND status = 'PAGADO'`, [
-        payment.credit_id
-      ]);
+      await refreshCreditAfterReversal(conn, payment.credit_id);
 
       await recordAudit(conn, {
         entity: "payment",

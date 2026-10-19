@@ -30,6 +30,10 @@ hizo, cómo verificarlo y qué queda pendiente. Si algo no se pudo probar, se di
 - Bloquear con `SELECT … FOR UPDATE` como primera sentencia de la transacción, en el
   orden crédito → pago (ver `docs/escalabilidad.md` §3.1).
 - Los endpoints que crean registros llevan `idempotent(...)` (ver README, "Idempotencia").
+- Dentro de `withTransaction` solo trabajo de base de datos: si hay deadlock, la transacción completa se reintenta.
+- Procesos masivos (jobs) que escriben sin bloquear el crédito: sentencias condicionales (`… AND status = <leído>`)
+  y en `withReadCommitted`, para no pisar ni bloquear pagos concurrentes (ver `docs/escalabilidad.md` §3.14).
+- Todo pago debe quedar aplicado por completo (lo aplicado = el monto) y solo a créditos VIGENTE o EN_MORA.
 
 ## Despliegue
 - Hostinger compila desde la rama `claude/gifted-fermi-xbyqul` (la rama por defecto).

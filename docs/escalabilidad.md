@@ -36,6 +36,13 @@ para cientos o miles de usuarios concurrentes. Riesgos principales detectados:
 | 14 | P1 | C | Sin logs de peticiones, métricas ni alertas; `/health` no toca la base | 🔶 log estructurado con id de petición, consultas lentas, `/admin/metrics`, errores no capturados (§3.13); falta un monitor externo con alertas (acción de operación, §10) |
 | 15 | P1 | R | Respuestas de la API sin `Cache-Control` (riesgo con CDN/LiteSpeed cache) | ✅ `Cache-Control: no-store` en toda `/api` (§3.8) |
 | 16 | P2 | C | `COUNT(*)` en cada listado; `parameters` se lee en casi cada operación | ⏳ (el conteo de auditoría cuesta 112 ms con 1 M de filas y crece linealmente) |
+| 17 | P0 | C | Reversar un pago no devolvía el saldo de capital del crédito ni el saldo/estado de la cuota (64 de 75 créditos con reverso descuadrados en la base de pruebas) | ✅ [§3.14](#314-auditoría-de-transacciones-h1h5-2026-10-19) + reparación de datos (migración 027) |
+| 18 | P0 | R | El job de alertas escribía estados con datos leídos antes: podía devolver a VENCIDA una cuota recién pagada (actualización perdida) | ✅ §3.14 |
+| 19 | P1 | C | Pagos aceptados a créditos refinanciados y excedentes sobre lo adeudado, guardados sin aplicarse | ✅ §3.14 |
+| 20 | P1 | C | Reverso de pagos de créditos ya refinanciados | ✅ §3.14 |
+| 21 | P1 | C | Deadlock entre el job de alertas y pagos/reversos (500); sin reintento | ✅ §3.14 (READ COMMITTED en el job + reintento automático) |
+| 22 | P2 | C | Decisiones sobre solicitudes (aprobar/rechazar/cancelar) y radicación sin transacción ni bloqueo | ⏳ (hallazgos H6/H7 de la auditoría) |
+| 23 | P2 | R | Clave de idempotencia guardada después del commit (commit ambiguo) | ⏳ (H8) |
 
 El detalle de índices recomendados, de caché, de tareas asíncronas y el plan de
 pruebas de carga está en las secciones 6 a 8.
@@ -288,6 +295,54 @@ Ejemplo real (base de pruebas grande, un reporte pesado): la consulta aparece en
 `{"t":"slowq","ms":3282,"sql":"WITH bounds AS ( SELECT CAST(? AS DATE) ..."}` y, a continuación,
 `{"t":"req","id":"b1cf1b6a4358","m":"GET","p":"/api/v1/reports/credits-monthly-detail","s":200,"ms":3338,"u":64,"i":"8e5e5484","slow":true}`.
 
+### 3.14 Auditoría de transacciones (H1–H5, 2026-10-19)
+
+Auditoría de atomicidad, aislamiento y concurrencia de las operaciones de dinero. Pagos, desembolso,
+refinanciación y cancelación anticipada ya eran atómicos y bloqueaban el crédito primero (§3.1); los problemas
+estaban en lo que pasa **alrededor**. Medido en la base de pruebas antes del cambio: 64 de 75 créditos vigentes
+con algún pago reversado tenían `principal_balance` distinto de lo que suman sus cuotas, y 164 cuotas estaban en
+PARCIAL sin ningún abono.
+
+| Hallazgo | Problema | Cambio |
+|---|---|---|
+| H1 | El reverso devolvía lo pagado a las cuotas pero no recalculaba `credits.principal_balance` ni `credit_schedule_installments.balance`, y dejaba la cuota en PARCIAL aunque quedara sin abonos. El tablero y el reporte por asesor usan `principal_balance`. | El reverso recalcula, en la misma transacción, saldo y estado de cada cuota tocada (`refreshInstallments`) y saldo y estado del crédito (`refreshCreditAfterReversal`). Migración **027** repara los datos ya afectados (repetible). |
+| H2 | El job leía miles de cuotas y luego escribía su estado con `UPDATE … WHERE id IN (…)` sin condición: si un pago se confirmaba en ese intervalo, la cuota pagada volvía a VENCIDA. | Escritura condicional: `… AND status = <el que leyó el job>` (`persistInstallmentStates`). Si cambió, se omite y la próxima corrida la evalúa. |
+| H3 | Solo se rechazaban créditos PAGADO/ANULADO: un pago a un crédito REFINANCIADO (cuotas anuladas) se guardaba sin aplicarse. | Pagos y cancelación anticipada exigen crédito VIGENTE o EN_MORA. |
+| H4 | El excedente de un pago se descartaba en silencio (monto guardado > lo aplicado). | Dentro de la transacción se exige que lo aplicado sea igual al monto; si no, 409 con el máximo que se puede registrar y rollback. Se eligió **rechazar** (no saldo a favor): es reversible y no requiere un concepto contable nuevo. |
+| H5 | Se podía reversar un pago de un crédito ya refinanciado: el crédito nuevo quedaba con menos capital del debido. | El reverso exige crédito VIGENTE, EN_MORA o PAGADO. |
+
+**Regresión encontrada al probar y corregida:** con H1 el reverso ahora sí cambia el estado de las cuotas, y en
+3 de 8 corridas completas de pruebas apareció un deadlock entre un reverso y el job de alertas. `SHOW ENGINE INNODB
+STATUS` mostró la causa: en REPEATABLE READ, `UPDATE credits … WHERE EXISTS (SELECT … cuotas)` del job deja
+bloqueos compartidos *de rango* sobre el índice `(status, credit_id)` de las cuotas y luego espera el crédito,
+mientras el reverso tiene el crédito y quiere escribir esas cuotas. El mismo riesgo existía con los pagos. Cambios:
+
+- Las escrituras del job corren en **READ COMMITTED** (`withReadCommitted` en `db/pool.ts`): sin bloqueos de rango.
+  Es seguro porque cada sentencia del job es condicional y se reevalúa en la siguiente corrida.
+- `withTransaction` **reintenta** la transacción completa (hasta 2 veces) si MySQL la elige como víctima de un
+  deadlock (1213), en vez de responder 500. Por eso dentro de una transacción solo va trabajo de base de datos.
+
+Resultado: 12 corridas de estrés (concurrencia + job + estas pruebas) y 5 de la suite completa (136 pruebas) sin un
+solo deadlock nuevo (`SHOW ENGINE INNODB STATUS` conserva el último de antes del arreglo).
+
+**Cómo verificar en producción** (solo lectura; debe dar 0 después de la migración 027):
+
+```sql
+SELECT COUNT(*) FROM credits c
+WHERE c.status IN ('VIGENTE','EN_MORA','PAGADO')
+  AND ABS(c.principal_balance - (SELECT COALESCE(SUM(principal_due - principal_paid), 0)
+       FROM credit_schedule_installments WHERE credit_id = c.id AND status <> 'ANULADA')) > 0.01;
+```
+
+**Pruebas:** `transacciones.audit.test.ts` (6 casos: H1 ×3, H2, H3+H5, H4) fallan con el código anterior y pasan con
+el nuevo; `db/withTransaction.test.ts` provoca un deadlock real con dos transacciones cruzadas y comprueba el
+reintento (falla con los reintentos en 0).
+
+**Pendiente de la auditoría:** H6 (aprobar/rechazar/cancelar sin bloqueo ni transacción), H7 (radicar solicitud sin
+transacción), H8 (guardar la clave de idempotencia dentro de la transacción del negocio), reglas `CHECK` en la base
+(pagado ≤ debido, no negativos) y H9 (la refinanciación suma interés futuro al nuevo capital: regla de negocio a
+confirmar con la cooperativa).
+
 ### 3.9 Incidente: migración 021 interrumpida dejó el sitio caído (2026-10-12)
 
 **Qué pasó:** al desplegar la migración 021, el proceso se reinició a mitad de arranque
@@ -435,6 +490,7 @@ Lo que ya está en el código (§3.13) permite diagnosticar; falta lo que avisa 
 
 | Fecha | Cambio |
 |---|---|
+| 2026-10-19 | Auditoría de transacciones: H1–H5 corregidos (reverso recalcula saldos, job con escritura condicional, sin pagos a créditos cerrados ni excedentes, sin reversos de refinanciados), migración 027 repara saldos, deadlock job↔reverso eliminado (READ COMMITTED en el job) y reintento automático ante deadlock (§3.14). |
 | 2026-10-16 | Corrección del cambio anterior: el login no renovaba la marca `lastActivityAt`, así que con una marca vieja en el navegador `IdleTimeout` expulsaba al usuario justo después de entrar ("sesión expirada" en bucle). Ahora `login()` la pone en "ahora" y `logout()` la borra; prueba `AuthContext.test.tsx` (falla sin la corrección). |
 | 2026-10-16 | Sesión: al abrir la app se reiniciaba el reloj de inactividad y una sesión de 5 días seguía abierta. Ahora `IdleTimeout` cierra al abrir si la última actividad supera 10 min, y el refresh token por defecto pasa de 7 d a 12 h. No es de rendimiento; se anota por ser un cambio de comportamiento de producción. |
 | 2026-10-13 | Página Reportes: tabla de cuotas vencidas paginada (25 por página, `/reports/overdue?page=&pageSize=` con `total`; sin `page` conserva la respuesta completa) y exportación de pagos con rango Desde/Hasta (usa `?from=&to=`). Limitación: el servidor aún calcula la lista completa y la corta en memoria (cacheada 60 s); no se midió con volumen nuevo. |

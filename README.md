@@ -577,6 +577,18 @@ no tuvo que confirmarlo; se ajusta cuando quiera):
 - Solo queda en la actividad lo que se hizo desde el 16 de octubre en adelante para revisión de documentos,
   referencias, permisos, pagos verificados y gestiones; lo anterior no tenía registro.
 
+## Reglas de pagos y reversos (auditoría de transacciones, 2026-10-19)
+
+- Solo se registran pagos y cancelaciones anticipadas a créditos **VIGENTE o EN_MORA** (un crédito refinanciado,
+  pagado o anulado responde 409).
+- **No se aceptan excedentes:** si el pago supera lo adeudado, responde 409 con el máximo que se puede registrar
+  ese día y no guarda nada.
+- **Reversar un pago** recalcula el saldo de capital del crédito y el saldo y estado de cada cuota; un crédito
+  PAGADO vuelve a VIGENTE (o EN_MORA). No se pueden reversar pagos de créditos refinanciados o anulados.
+- Si la base elige una transacción como víctima de un deadlock, se reintenta sola (hasta 2 veces).
+- Detalle, mediciones y pendientes en `docs/escalabilidad.md` §3.14. La migración 027 repara los saldos que
+  quedaron mal por reversos anteriores.
+
 ## Escalabilidad y concurrencia
 
 Diagnóstico de escalabilidad, cambios realizados, mediciones y pendientes:

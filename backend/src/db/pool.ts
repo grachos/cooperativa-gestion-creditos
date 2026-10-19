@@ -102,17 +102,49 @@ export const pool = {
 
 export type PoolLike = typeof pool | PoolConnection;
 
+const DEADLOCK_ERRNO = 1213;
+const DEADLOCK_RETRIES = 2;
+
+/**
+ * Transacción con rollback ante cualquier error. Si MySQL la elige como víctima de un deadlock (1213), toda la
+ * transacción ya se deshizo, así que se reintenta desde el principio (hasta 2 veces, con una pausa corta al azar)
+ * en vez de responder 500. Por eso `fn` debe hacer solo trabajo de base de datos: nada externo (correos,
+ * eventos en vivo) dentro de la transacción.
+ */
 export async function withTransaction<T>(fn: (conn: PoolConnection) => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      const result = await fn(conn);
+      await conn.commit();
+      return result;
+    } catch (err: any) {
+      await conn.rollback().catch(() => undefined);
+      if (err?.errno === DEADLOCK_ERRNO && attempt < DEADLOCK_RETRIES) {
+        await new Promise((r) => setTimeout(r, 20 + Math.random() * 80));
+        continue;
+      }
+      throw err;
+    } finally {
+      conn.release();
+    }
+  }
+}
+
+/**
+ * Ejecuta sentencias sueltas (autocommit) en una conexión con aislamiento READ COMMITTED y la devuelve al pool
+ * en REPEATABLE READ. Para procesos masivos que escriben sin bloquear créditos (job de alertas): en
+ * REPEATABLE READ, un `UPDATE … WHERE EXISTS (SELECT … cuotas)` deja bloqueos compartidos de rango sobre las
+ * cuotas y choca en deadlock con un pago o reverso que tiene el crédito y quiere escribir esas cuotas.
+ */
+export async function withReadCommitted<T>(fn: (conn: PoolConnection) => Promise<T>): Promise<T> {
   const conn = await pool.getConnection();
   try {
-    await conn.beginTransaction();
-    const result = await fn(conn);
-    await conn.commit();
-    return result;
-  } catch (err) {
-    await conn.rollback();
-    throw err;
+    await conn.query("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED");
+    return await fn(conn);
   } finally {
+    await conn.query("SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ").catch(() => undefined);
     conn.release();
   }
 }

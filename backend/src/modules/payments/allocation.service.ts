@@ -182,3 +182,61 @@ export async function allocatePayment(
 
   return lines;
 }
+
+/**
+ * Recalcula saldo y estado de las cuotas indicadas a partir de lo que tienen pagado (usado al reversar un pago).
+ * Misma regla que al aplicar un pago: sin saldo => PAGADA; con algún abono => PARCIAL; sin abonos => según el
+ * atraso (VENCIDA / EN_MORA por los rangos de mora) o PENDIENTE si aún no vence. Las anuladas no se tocan.
+ */
+export async function refreshInstallments(conn: PoolConnection, installmentIds: number[], asOf: Date): Promise<void> {
+  if (installmentIds.length === 0) return;
+  const buckets = await loadMoraBuckets(conn);
+  const [rows] = await conn.query<any[]>(
+    `SELECT id, due_date, status, principal_due, interest_due, principal_paid, interest_paid, late_fee_paid
+     FROM credit_schedule_installments WHERE id IN (?) AND status <> 'ANULADA'`,
+    [installmentIds]
+  );
+  for (const r of rows as any[]) {
+    const principalPaid = Number(r.principal_paid);
+    const interestPaid = Number(r.interest_paid);
+    const lateFeePaid = Number(r.late_fee_paid);
+    const outstanding = Math.max(0, round2(Number(r.principal_due) - principalPaid + (Number(r.interest_due) - interestPaid)));
+    const overdueDays = calculateOverdueDays(new Date(r.due_date), asOf);
+    let status: string;
+    if (outstanding <= 0) status = "PAGADA";
+    else if (principalPaid > 0 || interestPaid > 0 || lateFeePaid > 0) status = "PARCIAL";
+    else if (overdueDays > 0) status = getMoraBucket(overdueDays, buckets).code === "CD001" ? "VENCIDA" : "EN_MORA";
+    else status = "PENDIENTE";
+    await conn.query(`UPDATE credit_schedule_installments SET balance = ?, status = ?, overdue_days = ? WHERE id = ?`, [
+      outstanding,
+      status,
+      overdueDays,
+      r.id
+    ]);
+  }
+}
+
+/** Tras un reverso: saldo de capital desde las cuotas y estado del crédito (PAGADO vuelve a VIGENTE o EN_MORA). */
+export async function refreshCreditAfterReversal(conn: PoolConnection, creditId: number): Promise<void> {
+  const [rows] = await conn.query<any[]>(
+    `SELECT COALESCE(SUM(principal_due - principal_paid), 0) AS remaining,
+            SUM(CASE WHEN status NOT IN ('PAGADA','ANULADA') THEN 1 ELSE 0 END) AS pending,
+            SUM(CASE WHEN status = 'EN_MORA' THEN 1 ELSE 0 END) AS in_arrears
+     FROM credit_schedule_installments WHERE credit_id = ? AND status <> 'ANULADA'`,
+    [creditId]
+  );
+  const r = (rows as any[])[0];
+  const pending = Number(r.pending ?? 0);
+  await conn.query(
+    `UPDATE credits
+     SET principal_balance = ?,
+         status = CASE
+           WHEN status IN ('REFINANCIADO','ANULADO') THEN status
+           WHEN ? = 0 THEN 'PAGADO'
+           WHEN ? > 0 THEN 'EN_MORA'
+           ELSE 'VIGENTE'
+         END
+     WHERE id = ?`,
+    [round2(Number(r.remaining)), pending, Number(r.in_arrears ?? 0), creditId]
+  );
+}
