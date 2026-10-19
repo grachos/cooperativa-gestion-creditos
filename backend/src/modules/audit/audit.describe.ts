@@ -72,6 +72,8 @@ export function describeAudit(row: AuditRow): string {
     }
     case "credit_application:REJECT":
       return "Rechazó la solicitud";
+    case "credit_application:CANCEL":
+      return `Canceló la solicitud${ov.status ? ` (estaba ${String(ov.status).toLowerCase().replace("_", " ")})` : ""}`;
     case "credit:DISBURSE":
       return `Desembolsó el crédito${nv.creditNumber ? ` ${nv.creditNumber}` : ""}`;
     case "credit:REFINANCE":

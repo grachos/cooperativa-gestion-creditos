@@ -41,7 +41,7 @@ para cientos o miles de usuarios concurrentes. Riesgos principales detectados:
 | 19 | P1 | C | Pagos aceptados a créditos refinanciados y excedentes sobre lo adeudado, guardados sin aplicarse | ✅ §3.14 |
 | 20 | P1 | C | Reverso de pagos de créditos ya refinanciados | ✅ §3.14 |
 | 21 | P1 | C | Deadlock entre el job de alertas y pagos/reversos (500); sin reintento | ✅ §3.14 (READ COMMITTED en el job + reintento automático) |
-| 22 | P2 | C | Decisiones sobre solicitudes (aprobar/rechazar/cancelar) y radicación sin transacción ni bloqueo | ⏳ (hallazgos H6/H7 de la auditoría) |
+| 22 | P2 | C | Decisiones sobre solicitudes (aprobar/rechazar/cancelar) y radicación sin transacción ni bloqueo | ✅ §3.15 (H6/H7) |
 | 23 | P2 | R | Clave de idempotencia guardada después del commit (commit ambiguo) | ⏳ (H8) |
 
 El detalle de índices recomendados, de caché, de tareas asíncronas y el plan de
@@ -338,10 +338,38 @@ WHERE c.status IN ('VIGENTE','EN_MORA','PAGADO')
 el nuevo; `db/withTransaction.test.ts` provoca un deadlock real con dos transacciones cruzadas y comprueba el
 reintento (falla con los reintentos en 0).
 
-**Pendiente de la auditoría:** H6 (aprobar/rechazar/cancelar sin bloqueo ni transacción), H7 (radicar solicitud sin
-transacción), H8 (guardar la clave de idempotencia dentro de la transacción del negocio), reglas `CHECK` en la base
+**Pendiente de la auditoría:** ~~H6~~ y ~~H7~~ (hechos, §3.15), H8 (guardar la clave de idempotencia dentro de la transacción del negocio), reglas `CHECK` en la base
 (pagado ≤ debido, no negativos) y H9 (la refinanciación suma interés futuro al nuevo capital: regla de negocio a
 confirmar con la cooperativa).
+
+### 3.15 Solicitudes: decisiones y radicación atómicas (H6, H7, 2026-10-19)
+
+**Problema (confirmado por lectura de código y reproducido en pruebas):**
+- **H6:** aprobar, rechazar, cancelar, poner en revisión y revisar documentos/participantes/referencias leían el
+  estado de la solicitud sin bloqueo y escribían con varias sentencias sueltas (`UPDATE` incondicional del estado +
+  historial + auditoría). Con el código anterior, "aprobar y rechazar a la vez" terminó **las 3 veces** con las dos
+  respuestas en 200 y dos decisiones en el historial. Cancelar mientras otra persona desembolsa podía dejar una
+  solicitud CANCELADA con un crédito activo; rechazar un documento mientras se aprueba, una solicitud APROBADA con un
+  documento rechazado (estas dos ventanas son muy cortas y no se reprodujeron en las pruebas locales con el código
+  viejo; las pruebas quedan como protección).
+- **H7:** radicar insertaba la solicitud, los participantes, el historial y la auditoría sin transacción: un codeudor
+  inexistente daba error de llave foránea (500) y podía dejar una solicitud RADICADA sin codeudores.
+
+**Cambio:**
+- Toda operación sobre una solicitud corre en `withTransaction` y **bloquea la solicitud como primera sentencia**
+  (`lockApplication`, la misma fila que bloquea el desembolso). Así se aplican de a una y cada una ve el estado que
+  dejó la anterior; la segunda decisión recibe 409.
+- `transition()` va dentro de la transacción y su `UPDATE` es condicional al estado de origen (red de seguridad: si
+  cambió, 409 en vez de pisarlo).
+- La radicación es una sola transacción (idempotencia `transactional`), valida que existan el titular, los
+  codeudores, la sociedad y el asesor (400 con mensaje claro en vez de 500) y rechaza al titular como su propio
+  codeudor. Si algo falla, no queda nada guardado.
+- Cancelar ahora deja registro en la auditoría ("Canceló la solicitud", con el motivo).
+
+**Pruebas:** `solicitudes.concurrencia.test.ts` (6): aprobar vs. rechazar ×4, cancelar vs. desembolsar ×4, rechazar
+documento vs. aprobar ×4, decisiones sobre solicitudes cerradas, radicación inválida sin residuos, auditoría de la
+cancelación. Con el código anterior fallan 3 (aprobar vs. rechazar, radicación, auditoría); con el nuevo pasan las 6.
+Suite completa: 142 pruebas, 5 corridas seguidas sin fallos.
 
 ### 3.9 Incidente: migración 021 interrumpida dejó el sitio caído (2026-10-12)
 
@@ -490,6 +518,7 @@ Lo que ya está en el código (§3.13) permite diagnosticar; falta lo que avisa 
 
 | Fecha | Cambio |
 |---|---|
+| 2026-10-19 | H6 y H7: decisiones sobre solicitudes con bloqueo y transacción, radicación atómica con validación de participantes (§3.15). |
 | 2026-10-19 | Auditoría de transacciones: H1–H5 corregidos (reverso recalcula saldos, job con escritura condicional, sin pagos a créditos cerrados ni excedentes, sin reversos de refinanciados), migración 027 repara saldos, deadlock job↔reverso eliminado (READ COMMITTED en el job) y reintento automático ante deadlock (§3.14). |
 | 2026-10-16 | Corrección del cambio anterior: el login no renovaba la marca `lastActivityAt`, así que con una marca vieja en el navegador `IdleTimeout` expulsaba al usuario justo después de entrar ("sesión expirada" en bucle). Ahora `login()` la pone en "ahora" y `logout()` la borra; prueba `AuthContext.test.tsx` (falla sin la corrección). |
 | 2026-10-16 | Sesión: al abrir la app se reiniciaba el reloj de inactividad y una sesión de 5 días seguía abierta. Ahora `IdleTimeout` cierra al abrir si la última actividad supera 10 min, y el refresh token por defecto pasa de 7 d a 12 h. No es de rendimiento; se anota por ser un cambio de comportamiento de producción. |

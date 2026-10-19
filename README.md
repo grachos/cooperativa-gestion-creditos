@@ -586,6 +586,9 @@ no tuvo que confirmarlo; se ajusta cuando quiera):
 - **Reversar un pago** recalcula el saldo de capital del crédito y el saldo y estado de cada cuota; un crédito
   PAGADO vuelve a VIGENTE (o EN_MORA). No se pueden reversar pagos de créditos refinanciados o anulados.
 - Si la base elige una transacción como víctima de un deadlock, se reintenta sola (hasta 2 veces).
+- **Solicitudes:** aprobar, rechazar, cancelar, revisar y desembolsar se aplican de a una por solicitud; si dos personas
+  deciden a la vez, la segunda recibe 409. Radicar valida que existan el titular, los codeudores y el asesor (400), no
+  acepta al titular como su propio codeudor y, si algo falla, no guarda nada. Cancelar queda en la actividad.
 - Detalle, mediciones y pendientes en `docs/escalabilidad.md` §3.14. La migración 027 repara los saldos que
   quedaron mal por reversos anteriores.
 
