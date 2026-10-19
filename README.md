@@ -601,6 +601,14 @@ no tuvo que confirmarlo; se ajusta cuando quiera):
 - Solo queda en la actividad lo que se hizo desde el 16 de octubre en adelante para revisión de documentos,
   referencias, permisos, pagos verificados y gestiones; lo anterior no tenía registro.
 
+## Skill reutilizable: blindaje transaccional
+
+Las lecciones de este proyecto (concurrencia, idempotencia y doble clic, commit ambiguo, reglas de dinero,
+migraciones repetibles, sesiones, operación con varios procesos, pruebas) quedaron empaquetadas como skill de
+Claude para auditar o diseñar otros sistemas: `.claude/skills/blindaje-transaccional/` (se carga sola en este
+repositorio) y `docs/skills/blindaje-transaccional.skill` (para instalarla en la cuenta y usarla en cualquier
+proyecto).
+
 ## Carga masiva de asociados (Excel)
 
 Plantilla: [`docs/plantillas/plantilla_asociados.xlsx`](docs/plantillas/plantilla_asociados.xlsx). Una fila por
