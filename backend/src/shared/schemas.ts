@@ -100,12 +100,15 @@ export const disbursementSchema = z.object({
   disbursementProofFiled: z.boolean().optional().default(false)
 });
 
+// La refinanciación no lleva tasa propia: hereda el interés del crédito anterior (refinance.service.ts).
+// `interestRate` se acepta por compatibilidad y se ignora. `expectedTotal` = el total que vio el usuario.
 export const refinanceSchema = z.object({
   additionalCapital: z.coerce.number().min(0).default(0),
-  termValue: z.coerce.number().int().positive(),
-  interestRate: z.coerce.number().positive(),
+  termValue: z.coerce.number().int().positive().max(360),
+  interestRate: z.coerce.number().positive().optional(),
   firstInstallmentDate: z.string().date(),
-  reason: z.string().min(3).max(255)
+  reason: z.string().min(3).max(255),
+  expectedTotal: z.coerce.number().positive().optional()
 });
 
 export const adjustmentSchema = z.object({

@@ -44,6 +44,7 @@ para cientos o miles de usuarios concurrentes. Riesgos principales detectados:
 | 22 | P2 | C | Decisiones sobre solicitudes (aprobar/rechazar/cancelar) y radicación sin transacción ni bloqueo | ✅ §3.15 (H6/H7) |
 | 23 | P2 | R | Clave de idempotencia guardada después del commit (commit ambiguo) | ✅ §3.16 (H8) |
 | 24 | P2 | R | Sin reglas en la base: pagado > debido o saldos negativos solo los impedía el código | ✅ §3.17 (migración 028) |
+| 25 | P2 | C | Refinanciación: el interés pendiente pasaba a capital y se le cobraba otra vez la tasa por todo el plazo nuevo (H9) | ✅ §3.18 (regla de la cooperativa) |
 
 El detalle de índices recomendados, de caché, de tareas asíncronas y el plan de
 pruebas de carga está en las secciones 6 a 8.
@@ -340,8 +341,7 @@ el nuevo; `db/withTransaction.test.ts` provoca un deadlock real con dos transacc
 reintento (falla con los reintentos en 0).
 
 **Pendiente de la auditoría:** ~~H6~~ y ~~H7~~ (hechos, §3.15), ~~H8~~ (hecho, §3.16), ~~reglas `CHECK` en la base~~
-(hecho, §3.17) y H9 (la refinanciación suma interés futuro al nuevo capital: regla de negocio a
-confirmar con la cooperativa).
+(hecho, §3.17) y ~~H9~~ (regla confirmada por la cooperativa e implementada, §3.18).
 
 ### 3.15 Solicitudes: decisiones y radicación atómicas (H6, H7, 2026-10-19)
 
@@ -466,6 +466,39 @@ pasa con las reglas activas: ningún flujo de la app las incumple.
 MySQL 8.0.16+. **Producción (2026-10-19 19:22 UTC):** Hostinger usa **MariaDB 11.8.9**; la 028 se aplicó sin
 errores y el log muestra `reglas CHECK activas 10/10` (los datos reales cumplían todas).
 
+### 3.18 Refinanciación con la regla de la cooperativa y cuota redondeada (H9, 2026-10-19)
+
+**Problema (confirmado):** la refinanciación tomaba todo lo pendiente (capital + interés) como capital del
+crédito nuevo y le aplicaba de nuevo la tasa por todo el plazo nuevo. Con el ejemplo de la cooperativa
+($2.000.000 al 4 % a 15 cuotas, pagó 7, refinancia a 15 meses) la app daba cuota $182.044,44; la regla de la
+cooperativa da $156.500. Además aceptaba capital adicional dentro de la refinanciación y no redondeaba la cuota.
+
+**Regla confirmada por la cooperativa (2026-10-19)** (`modules/credits/refinance.service.ts`):
+- Cuotas pendientes = todas las no pagadas; si debe vencidas, se calcula desde la última pagada.
+- Nuevo crédito = lo que debe de esas cuotas + interés mensual del préstamo inicial × cuotas pendientes
+  ($1.707.200 + $80.000 × 8 = $2.347.200). Se le planteó que así el interés de esas cuotas queda dos veces y
+  confirmó que es la regla (parámetro `refinanciacion.chargeOriginalInterestOnPending`, se puede apagar).
+- Sin interés propio; cuota redondeada hacia arriba a $100 (parámetro `redondeo_cuota`): $2.347.200 / 15 =
+  $156.480 → $156.500; los $20 por cuota van al interés. En una cadena de refinanciaciones el interés mensual
+  se toma siempre del préstamo inicial.
+- Capital heredado e interés heredado separados (el saldo de capital del nuevo crédito es solo el capital
+  que faltaba) y lo pagado antes (capital/interés) guardado en `parameters_snapshot.refinance` y en la actividad.
+- El dinero nuevo es otro crédito (400). Con mora o gastos cobrados sin pagar: 409. `expectedTotal`
+  distinto del cálculo actual: 409 (mismo patrón que la cancelación anticipada).
+- Redondeo para todos los créditos nuevos: verificado contra el crédito real de $4.100.000 a 18 cuotas
+  ($391.800 = $227.777,78 + $164.022,22). Los cronogramas ya creados no cambian.
+
+Migración `029_refinanciacion_y_redondeo.sql` (solo `INSERT IGNORE` de parámetros: repetible; probada dos
+veces). Bloqueos sin cambios: el crédito con `FOR UPDATE` como primera sentencia.
+
+**Verificación:** `refinanciacion.test.ts` (4): cuota $213.400 en el crédito de $2.000.000; el ejemplo de la
+cooperativa completo (cálculo previo, 409 por total distinto, 400 por dinero nuevo, cronograma de 15 cuotas de
+$156.500 con capital e interés heredados exactos, refinanciar de nuevo sigue usando $80.000); sin pagos con
+cuotas vencidas; 409 con gastos sin pagar. Suite backend 151 pruebas, dos corridas; frontend 44 y build.
+
+**Pendiente:** la pantalla de refinanciación no se probó en un navegador (solo compilación y pruebas).
+La tarjeta "Tasa mensual fija" del crédito refinanciado muestra la tasa del préstamo inicial (informativa).
+
 ## 4. Cómo verificar
 
 Pruebas automáticas (carpeta `backend/src`). Las que necesitan base de datos son
@@ -584,6 +617,7 @@ Lo que ya está en el código (§3.13) permite diagnosticar; falta lo que avisa 
 
 | Fecha | Cambio |
 |---|---|
+| 2026-10-19 | H9: refinanciación con la regla de la cooperativa (pendiente + interés del préstamo inicial × cuotas pendientes, sin interés propio, capital/interés heredados separados) y cuota redondeada hacia arriba a $100 (migración 029, §3.18). |
 | 2026-10-19 | Reglas CHECK de montos en la base (migración 028, condicionales por versión y por datos existentes) y aviso en el arranque con la versión de la base (§3.17). |
 | 2026-10-19 | H8: la clave de idempotencia se confirma dentro de la transacción del pago/desembolso/refinanciación/radicación; un error después del COMMIT ya no permite duplicar al reintentar (§3.16). |
 | 2026-10-19 | H6 y H7: decisiones sobre solicitudes con bloqueo y transacción, radicación atómica con validación de participantes (§3.15). |

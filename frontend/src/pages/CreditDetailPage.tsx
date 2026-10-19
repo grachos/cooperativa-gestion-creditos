@@ -81,6 +81,7 @@ interface CreditDetail {
   seller_name: string | null;
   refinanced_from_credit_number: string | null;
   refinanced_to_credit_number: string | null;
+  parameters_snapshot: { refinance?: RefinanceQuote } | string | null;
   schedule: Installment[];
   payments: Payment[];
   alerts: Array<{ id: number; type: string; priority: string; message: string; status: string }>;
@@ -101,6 +102,8 @@ export default function CreditDetailPage() {
   if (isLoading) return <Loading />;
   if (error) return <ErrorView message={(error as Error).message} />;
   if (!data) return null;
+  const snapshot = typeof data.parameters_snapshot === "string" ? safeJson(data.parameters_snapshot) : data.parameters_snapshot;
+  const refinance = snapshot?.refinance ?? null;
 
   return (
     <div>
@@ -127,9 +130,18 @@ export default function CreditDetailPage() {
           </>
         )}
         Gestor: {data.collector_name ?? "Sin asignar"} · Asesor: {data.seller_name ?? "Sin asignar"} · Desembolsó: {data.disbursed_by_name ?? "—"}
-        {data.refinanced_from_credit_number && <> · Refinanció a {data.refinanced_from_credit_number}</>}
+        {data.refinanced_from_credit_number && <> · Viene de refinanciar el {data.refinanced_from_credit_number}</>}
         {data.refinanced_to_credit_number && <> · Refinanciado en {data.refinanced_to_credit_number}</>}
       </p>
+
+      {refinance && (
+        <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
+          <h2 className="mb-2 text-sm font-semibold text-slate-700">
+            Refinanciación: heredado del crédito {refinance.fromCreditNumber ?? data.refinanced_from_credit_number}
+          </h2>
+          <RefinanceBreakdown q={refinance} />
+        </div>
+      )}
 
       {(data.disbursement_to_account || data.disbursement_from_account || data.disbursement_proof_filed) && (
         <p className="mb-4 text-sm text-slate-500">
@@ -712,11 +724,63 @@ function AdjustmentForm({ creditId, onCreated }: { creditId: number; onCreated: 
   );
 }
 
+interface RefinanceQuote {
+  lastPaidInstallment: number | null;
+  pendingInstallments: number;
+  pendingPrincipal: number;
+  pendingInterest: number;
+  pendingTotal: number;
+  paidPrincipal: number;
+  paidInterest: number;
+  originalMonthlyInterest: number;
+  additionalInterest: number;
+  inheritedPrincipal: number;
+  inheritedInterest: number;
+  total: number;
+  installment: number;
+  pendingCharges: number;
+  termValue: number;
+  fromCreditNumber?: string;
+}
+
+/** Desglose de una refinanciación: lo que se calculó al refinanciar o lo que se calcularía hoy. */
+function RefinanceBreakdown({ q }: { q: RefinanceQuote }) {
+  const money = (n: number) => formatCurrency(n);
+  return (
+    <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm text-slate-600 sm:max-w-lg">
+      <dt>Cuotas pagadas</dt>
+      <dd className="text-right">{q.lastPaidInstallment ? `hasta la ${q.lastPaidInstallment}` : "ninguna"}</dd>
+      <dt>Ya pagó de capital / de interés</dt>
+      <dd className="text-right">
+        {money(q.paidPrincipal)} / {money(q.paidInterest)}
+      </dd>
+      <dt>Lo que debe de {q.pendingInstallments} cuotas pendientes</dt>
+      <dd className="text-right">{money(q.pendingTotal)}</dd>
+      <dt>Interés del préstamo inicial ({money(q.originalMonthlyInterest)} × {q.pendingInstallments})</dt>
+      <dd className="text-right">{money(q.additionalInterest)}</dd>
+      <dt className="font-semibold text-slate-800">Nuevo crédito</dt>
+      <dd className="text-right font-semibold text-slate-800">{money(q.total)}</dd>
+      <dt className="text-xs text-slate-400">Capital heredado / interés heredado</dt>
+      <dd className="text-right text-xs text-slate-400">
+        {money(q.inheritedPrincipal)} / {money(q.inheritedInterest)}
+      </dd>
+      <dt className="font-semibold text-slate-800">Cuota ({q.termValue} meses, redondeada)</dt>
+      <dd className="text-right font-semibold text-slate-800">{money(q.installment)}</dd>
+    </dl>
+  );
+}
+
+function safeJson(text: string): { refinance?: RefinanceQuote } | null {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
 function RefinanceForm({ creditId }: { creditId: number }) {
   const [open, setOpen] = useState(false);
-  const [additionalCapital, setAdditionalCapital] = useState("0");
   const [termValue, setTermValue] = useState("12");
-  const [interestRate, setInterestRate] = useState("4");
   const [firstInstallmentDate, setFirstInstallmentDate] = useState("");
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -724,6 +788,14 @@ function RefinanceForm({ creditId }: { creditId: number }) {
   // Tras el éxito se navega a otra página: se mantiene deshabilitado hasta entonces.
   const [redirecting, setRedirecting] = useState(false);
   const submitting = pendingSubmit || redirecting;
+  const term = Number(termValue);
+  const validTerm = Number.isInteger(term) && term > 0 && term <= 360;
+
+  const { data: quote, isLoading, error: quoteError } = useQuery({
+    queryKey: ["refinance-quote", creditId, term],
+    queryFn: () => api.get<RefinanceQuote>(`/credits/${creditId}/refinance-quote?termValue=${term}`),
+    enabled: open && validTerm
+  });
 
   if (!open) {
     return (
@@ -736,17 +808,12 @@ function RefinanceForm({ creditId }: { creditId: number }) {
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    if (!quote) return;
     if (!firstInstallmentDate || !reason) {
       setError("Debe indicar la fecha de la primera cuota y el motivo de la refinanciación");
       return;
     }
-    const payload = {
-      additionalCapital: Number(additionalCapital),
-      termValue: Number(termValue),
-      interestRate: Number(interestRate),
-      firstInstallmentDate,
-      reason
-    };
+    const payload = { termValue: term, firstInstallmentDate, reason, expectedTotal: quote.total };
     try {
       const out = await submit(payload, (idempotencyKey) =>
         api.post<{ id: number }>(`/credits/${creditId}/refinance`, payload, { idempotencyKey })
@@ -763,38 +830,20 @@ function RefinanceForm({ creditId }: { creditId: number }) {
     <form onSubmit={onSubmit} className="mb-4 space-y-3 rounded-xl border border-slate-200 bg-white p-4">
       <h2 className="text-sm font-semibold text-slate-700">Refinanciar crédito</h2>
       <p className="text-xs text-slate-400">
-        El saldo pendiente del crédito actual se traslada al nuevo crédito, sumando el capital adicional que indiques.
+        El nuevo crédito hereda lo que falta de las cuotas pendientes más el interés del préstamo inicial por cada una, sin
+        interés propio. Si necesita dinero nuevo, se presta como un crédito aparte.
       </p>
       {error && <p className="rounded-md bg-red-50 p-2 text-sm text-red-700">{error}</p>}
       <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="mb-1 block text-xs text-slate-500">Capital adicional</label>
-          <input
-            type="number"
-            min={0}
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-            value={additionalCapital}
-            onChange={(e) => setAdditionalCapital(e.target.value)}
-          />
-        </div>
         <div>
           <label className="mb-1 block text-xs text-slate-500">Nuevo plazo (meses)</label>
           <input
             type="number"
             min={1}
+            max={360}
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
             value={termValue}
             onChange={(e) => setTermValue(e.target.value)}
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-xs text-slate-500">Nueva tasa mensual (%)</label>
-          <input
-            type="number"
-            step="0.01"
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-            value={interestRate}
-            onChange={(e) => setInterestRate(e.target.value)}
           />
         </div>
         <div>
@@ -807,6 +856,14 @@ function RefinanceForm({ creditId }: { creditId: number }) {
           />
         </div>
       </div>
+      {isLoading && <p className="text-sm text-slate-400">Calculando…</p>}
+      {quoteError && <p className="text-sm text-red-700">{(quoteError as Error).message}</p>}
+      {quote && <RefinanceBreakdown q={quote} />}
+      {quote && quote.pendingCharges > 0 && (
+        <p className="rounded-md bg-amber-50 p-2 text-sm text-amber-800">
+          Tiene cargos sin pagar (mora o gastos) por {formatCurrency(quote.pendingCharges)}. Regístrelos con un pago antes de refinanciar.
+        </p>
+      )}
       <input
         placeholder="Motivo de la refinanciación"
         className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
@@ -816,7 +873,7 @@ function RefinanceForm({ creditId }: { creditId: number }) {
       <div className="flex gap-2">
         <button
           type="submit"
-          disabled={submitting}
+          disabled={submitting || !quote || quote.pendingCharges > 0}
           className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
         >
           {submitting ? "Procesando..." : "Confirmar refinanciación"}

@@ -40,6 +40,10 @@ con Vite.
   crédito de $4.100.000 a 18 cuotas reparte exactamente $227.777,78 de
   capital y $164.022,22 de interés en cada cuota, consistente con su propia
   nota de "interés del 4% mensual". Ver `schedule.service.ts`.
+  **La cuota se redondea hacia arriba a los $100** (parámetro `redondeo_cuota`) y la
+  diferencia queda como interés: $227.777,78 + $164.000 = $391.777,78 → cuota
+  $391.800, exactamente como el crédito real. Aplica a lo que se desembolse o
+  refinancie desde la migración 029; los cronogramas ya creados no cambian.
 - Registro de pagos y abonos con **imputación real: gastos → mora → interés
   → capital**. El orden se confirmó contra el histórico de observaciones de
   pago de la cooperativa ("SALDA $91.800 CUOTA 4 + $100.000 DE GASTOS DE
@@ -99,11 +103,22 @@ con Vite.
   independiente (crece mes a mes sin corresponder al 1,9% de interés ni a un
   % fijo de capital) — falta confirmar con la cooperativa qué lo genera antes
   de construirlo.
-- **Refinanciación** (`POST /credits/:id/refinance`): cierra el crédito
-  actual (`REFINANCIADO`), traslada el saldo pendiente + capital adicional a
-  un crédito nuevo con su propio cronograma, y deja ambos créditos enlazados
-  (`refinanced_from_credit_id` / `refinanced_to_credit_id`). Modela el patrón
-  visto en el Excel real ("SE CANCELA CRÉDITO 254 Y SE LE RESTRUCTURA...").
+- **Refinanciación** (`POST /credits/:id/refinance`, cálculo previo en
+  `GET /credits/:id/refinance-quote?termValue=`): cierra el crédito actual
+  (`REFINANCIADO`) y crea uno nuevo enlazado (`refinanced_from_credit_id` /
+  `refinanced_to_credit_id`). Regla de la cooperativa (2026-10-19):
+  - Cuotas pendientes = todas las no pagadas (si debe vencidas, se calcula desde la última pagada).
+  - Nuevo crédito = lo que debe de esas cuotas (capital + interés) **+ interés mensual del préstamo
+    inicial × cuotas pendientes** (parámetro `refinanciacion`, se puede apagar). Sin interés propio,
+    en el plazo que se elija, con la cuota redondeada.
+  - Ejemplo: $2.000.000 al 4 % a 15 cuotas ($213.400); pagó 7 → debe $1.707.200 + $80.000 × 8 =
+    $2.347.200 → a 15 meses, cuota $156.500.
+  - Se guarda separado el capital heredado (saldo de capital del nuevo crédito) y el interés heredado,
+    y lo que ya había pagado de capital y de interés; el detalle del crédito nuevo muestra
+    "Refinanciación: heredado del crédito …" (`parameters_snapshot.refinance`, y en la actividad).
+  - No se refinancia con mora o gastos cobrados sin pagar (409). El dinero nuevo se presta como un
+    crédito aparte, con su interés normal (`additionalCapital` > 0 responde 400). Si se envía
+    `expectedTotal` y el cálculo cambió, responde 409.
 - Tablero operativo y reportes (quién debe pagar en una fecha, cartera
   vencida, exportación CSV de pagos).
 - Auditoría de operaciones sensibles (`audit_logs`) con valor anterior/nuevo.
