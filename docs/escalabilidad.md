@@ -463,7 +463,8 @@ se aplican las otras 9 y el arranque avisa. `reglas.check.test.ts` (2). La suite
 pasa con las reglas activas: ningún flujo de la app las incumple.
 
 **No probado:** MySQL 8 (no hay uno local); la condición de versión y la sintaxis son las documentadas para
-MySQL 8.0.16+. **Pendiente:** revisar el log del primer arranque en Hostinger (versión y 10/10).
+MySQL 8.0.16+. **Producción (2026-10-19 19:22 UTC):** Hostinger usa **MariaDB 11.8.9**; la 028 se aplicó sin
+errores y el log muestra `reglas CHECK activas 10/10` (los datos reales cumplían todas).
 
 ## 4. Cómo verificar
 
