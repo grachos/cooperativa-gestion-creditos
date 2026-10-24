@@ -601,6 +601,13 @@ no tuvo que confirmarlo; se ajusta cuando quiera):
 - Solo queda en la actividad lo que se hizo desde el 16 de octubre en adelante para revisión de documentos,
   referencias, permisos, pagos verificados y gestiones; lo anterior no tenía registro.
 
+## Pantalla de bienvenida al iniciar sesión
+
+Después de iniciar sesión se muestra el logo de la cooperativa con un círculo de estado que se llena de 0 a 100 %
+y el texto "Cargando la página…" durante 3 segundos (`LOADING_VISIBLE_MS` en
+`frontend/src/components/SplashIntro.tsx`); luego el logo se desvanece y aparece la aplicación. Es una espera
+simulada pedida por la cooperativa (no depende de la carga real). La pantalla de login conserva su logo breve.
+
 ## Skill reutilizable: blindaje transaccional
 
 Las lecciones de este proyecto (concurrencia, idempotencia y doble clic, commit ambiguo, reglas de dinero,

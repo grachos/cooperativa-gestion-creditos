@@ -53,7 +53,7 @@ export function Layout() {
 
   return (
     <>
-      {justLoggedIn && <SplashIntro onLeaveStart={() => setContentVisible(true)} onDone={clearJustLoggedIn} />}
+      {justLoggedIn && <SplashIntro showLoading onLeaveStart={() => setContentVisible(true)} onDone={clearJustLoggedIn} />}
       <IdleTimeout />
       <div className={`transition-opacity duration-500 ${contentVisible ? "opacity-100" : "opacity-0"}`}>
         <div className="flex min-h-screen bg-slate-50">
