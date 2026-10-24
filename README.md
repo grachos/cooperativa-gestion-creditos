@@ -604,7 +604,7 @@ no tuvo que confirmarlo; se ajusta cuando quiera):
 ## Pantalla de bienvenida al iniciar sesión
 
 Después de iniciar sesión se muestra el logo de la cooperativa con un círculo de estado que se llena de 0 a 100 %
-y el texto "Cargando la página…" durante 3 segundos (`LOADING_VISIBLE_MS` en
+y el texto "Cargando la página…" durante 5 segundos (`LOADING_VISIBLE_MS` en
 `frontend/src/components/SplashIntro.tsx`); luego el logo se desvanece y aparece la aplicación. Es una espera
 simulada pedida por la cooperativa (no depende de la carga real). La pantalla de login conserva su logo breve.
 

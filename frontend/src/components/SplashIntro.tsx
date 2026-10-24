@@ -4,7 +4,7 @@ const SPLASH_VISIBLE_MS = 900;
 const SPLASH_TRANSITION_MS = 600;
 
 /** Después de iniciar sesión: logo + círculo de carga durante unos segundos (pedido de la cooperativa, 2026-10-24). */
-const LOADING_VISIBLE_MS = 3000;
+const LOADING_VISIBLE_MS = 5000;
 
 interface SplashIntroProps {
   /** Muestra el círculo de estado "Cargando la página…" y alarga la pantalla a LOADING_VISIBLE_MS. */
