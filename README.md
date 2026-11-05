@@ -601,6 +601,15 @@ no tuvo que confirmarlo; se ajusta cuando quiera):
 - Solo queda en la actividad lo que se hizo desde el 16 de octubre en adelante para revisión de documentos,
   referencias, permisos, pagos verificados y gestiones; lo anterior no tenía registro.
 
+## Carga masiva de créditos (Excel)
+
+Plantilla: [`docs/plantillas/plantilla_creditos.xlsx`](docs/plantillas/plantilla_creditos.xlsx). Un crédito por
+fila; el titular y los codeudores se referencian por documento y deben estar cargados antes (plantilla de
+asociados). Incluye monto, plazo, tasa, fechas, asesor, gestor, fondeador, cuentas, cuotas pagadas a la fecha y
+campos de control (saldo y cuota según el Excel anterior) para compararlos con lo que calcula la app (cuota
+redondeada hacia arriba a $100). La última columna se calcula sola. La herramienta de importación que lee esta
+plantilla aún no existe: por ahora es solo el formato.
+
 ## Pantalla de bienvenida al iniciar sesión
 
 Después de iniciar sesión se muestra el logo de la cooperativa con un círculo de estado que se llena de 0 a 100 %
