@@ -619,6 +619,15 @@ campos de control (saldo y cuota según el Excel anterior) para compararlos con 
 redondeada hacia arriba a $100). La última columna se calcula sola. La herramienta de importación que lee esta
 plantilla aún no existe: por ahora es solo el formato.
 
+## Selector de titular y codeudores con búsqueda
+
+En «Nueva solicitud», el titular y los codeudores se eligen con un campo donde se escribe para buscar
+(`frontend/src/components/SearchCombobox.tsx`): por nombre, apellido o cédula, con varias palabras en cualquier
+orden ("omar blanco" encuentra a OMAR ALEXIS BLANCO DURAN). La búsqueda se hace en el servidor
+(`GET /associates?search=`, 20 resultados, solo asociados activos), así que sirve con miles de asociados; antes el
+desplegable solo cargaba los primeros 100. Se elige con el mouse o con flechas + Enter; en codeudores no se ofrece el
+titular ni los ya elegidos.
+
 ## Pantalla de bienvenida al iniciar sesión
 
 Después de iniciar sesión se muestra el logo de la cooperativa con un círculo de estado que se llena de 0 a 100 %

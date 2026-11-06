@@ -25,9 +25,11 @@ associatesRouter.get(
 
     const conditions: string[] = [];
     const args: unknown[] = [];
-    if (search) {
+    // Cada palabra debe aparecer en el nombre, el apellido o la identificación: "omar blanco" encuentra a
+    // "OMAR ALEXIS BLANCO DURAN" y "1032 perez" a un asociado por cédula y apellido.
+    for (const term of (search ?? "").split(/\s+/).filter(Boolean).slice(0, 5)) {
       conditions.push(`(first_name LIKE ? OR last_name LIKE ? OR id_number LIKE ?)`);
-      args.push(`%${search}%`, `%${search}%`, `%${search}%`);
+      args.push(`%${term}%`, `%${term}%`, `%${term}%`);
     }
     if (selectable) {
       conditions.push(`status = 'ACTIVO'`);

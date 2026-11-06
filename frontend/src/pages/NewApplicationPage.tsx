@@ -5,19 +5,29 @@ import { api } from "../lib/api";
 import { useIdempotentSubmit } from "../hooks/useIdempotentSubmit";
 import { formatThousands } from "../lib/format";
 import { useDefaultMonthlyRate } from "../hooks/useParameterList";
+import { SearchCombobox, type ComboOption } from "../components/SearchCombobox";
 
 interface AssociateOption {
   id: number;
   first_name: string;
   last_name: string;
+  id_type: string;
+  id_number: string;
+}
+
+/** Busca asociados activos por nombre, apellido o cédula (varias palabras) en el servidor. */
+async function searchAssociates(query: string): Promise<ComboOption[]> {
+  const q = query ? `&search=${encodeURIComponent(query)}` : "";
+  const res = await api.get<{ data: AssociateOption[] }>(`/associates?pageSize=20&selectable=true${q}`);
+  return res.data.map((a) => ({
+    id: a.id,
+    label: `${a.first_name} ${a.last_name}`,
+    detail: `${a.id_type} ${a.id_number}`
+  }));
 }
 
 export default function NewApplicationPage() {
   const navigate = useNavigate();
-  const { data: associates } = useQuery({
-    queryKey: ["associates", "picker"],
-    queryFn: () => api.get<{ data: AssociateOption[] }>("/associates?pageSize=100&selectable=true")
-  });
   const defaultMonthlyRate = useDefaultMonthlyRate();
   const { data: users } = useQuery({
     queryKey: ["users"],
@@ -41,6 +51,10 @@ export default function NewApplicationPage() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    if (!form.titularAssociateId) {
+      setError("Seleccione el titular: escriba su nombre o cédula y elíjalo de la lista.");
+      return;
+    }
     if (!form.requestedAmount || Number(form.requestedAmount) <= 0) {
       setError("Indique un monto solicitado válido.");
       return;
@@ -75,19 +89,13 @@ export default function NewApplicationPage() {
 
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-700">Titular</label>
-          <select
-            required
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+          <SearchCombobox
             value={form.titularAssociateId}
-            onChange={(e) => setForm({ ...form, titularAssociateId: e.target.value })}
-          >
-            <option value="">Seleccione un asociado</option>
-            {associates?.data.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.first_name} {a.last_name}
-              </option>
-            ))}
-          </select>
+            onChange={(id) => setForm({ ...form, titularAssociateId: id })}
+            search={searchAssociates}
+            placeholder="Escriba para buscar por nombre o cédula"
+            ariaLabel="Titular"
+          />
         </div>
 
         <div>
@@ -104,28 +112,20 @@ export default function NewApplicationPage() {
           <div className="space-y-2">
             {form.coDebtorAssociateIds.map((value, slot) => (
               <div key={slot} className="flex gap-2">
-                <select
-                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                  value={value}
-                  onChange={(e) => {
-                    const next = [...form.coDebtorAssociateIds];
-                    next[slot] = e.target.value;
-                    setForm({ ...form, coDebtorAssociateIds: next });
-                  }}
-                >
-                  <option value="">Seleccione un codeudor</option>
-                  {associates?.data
-                    .filter(
-                      (a) =>
-                        String(a.id) !== form.titularAssociateId &&
-                        !form.coDebtorAssociateIds.some((id, i) => i !== slot && id === String(a.id))
-                    )
-                    .map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.first_name} {a.last_name}
-                      </option>
-                    ))}
-                </select>
+                <div className="w-full">
+                  <SearchCombobox
+                    value={value}
+                    onChange={(id) => {
+                      const next = [...form.coDebtorAssociateIds];
+                      next[slot] = id;
+                      setForm({ ...form, coDebtorAssociateIds: next });
+                    }}
+                    search={searchAssociates}
+                    placeholder="Escriba para buscar un codeudor"
+                    ariaLabel={`Codeudor ${slot + 1}`}
+                    excludeIds={[form.titularAssociateId, ...form.coDebtorAssociateIds.filter((_, i) => i !== slot)]}
+                  />
+                </div>
                 <button
                   type="button"
                   onClick={() =>
