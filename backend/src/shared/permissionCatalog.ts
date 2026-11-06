@@ -32,6 +32,7 @@ export const PERMISSION_CATALOG: PermissionModule[] = [
       { code: "applications:read", label: "Ver solicitudes" },
       { code: "applications:write", label: "Radicar solicitudes" },
       { code: "applications:cancel", label: "Cancelar solicitudes" },
+      { code: "applications:edit_date", label: "Cambiar la fecha de una solicitud (queda registrado quién y por qué)" },
       { code: "applications:review", label: "Revisar: poner en revisión, documentos, participantes y referencias" },
       { code: "applications:approve", label: "Aprobar o rechazar solicitudes" }
     ]

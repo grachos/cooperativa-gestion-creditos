@@ -286,7 +286,7 @@ export default function ApplicationDetailPage() {
             {" · "}
           </>
         )}
-        Radicada por {data.created_by_name ?? "—"} · {formatDateTime(data.created_at)}
+        Radicada por {data.created_by_name ?? "—"} · fecha de la solicitud {formatDateTime(data.created_at)}
         {data.decided_by_name && (
           <>
             {" "}
@@ -295,6 +295,16 @@ export default function ApplicationDetailPage() {
           </>
         )}
       </p>
+
+      {hasPermission("applications:edit_date") && (
+        <ChangeDateForm
+          applicationId={data.id}
+          onDone={() => {
+            invalidate();
+            void queryClient.invalidateQueries({ queryKey: ["applications"] });
+          }}
+        />
+      )}
 
       {actionError && <p className="mb-4 rounded-md bg-red-50 p-2 text-sm text-red-700">{actionError}</p>}
 
@@ -544,6 +554,84 @@ const RESULT_STYLES: Record<string, string> = {
   NEGATIVA: "bg-red-50 text-red-700",
   SIN_RESPUESTA: "bg-amber-50 text-amber-700"
 };
+
+/** Cambia la fecha de la solicitud (cargas manuales quedan con la fecha de hoy). Queda en la actividad. */
+function ChangeDateForm({ applicationId, onDone }: { applicationId: number; onDone: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [date, setDate] = useState("");
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const today = new Date().toISOString().slice(0, 10);
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="mb-4 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-100"
+      >
+        Cambiar fecha de la solicitud
+      </button>
+    );
+  }
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    if (!date) return setError("Indique la nueva fecha.");
+    if (reason.trim().length < 3) return setError("Indique el motivo del cambio.");
+    setSaving(true);
+    try {
+      await api.patch(`/applications/${applicationId}/date`, { date, reason: reason.trim() });
+      setOpen(false);
+      setDate("");
+      setReason("");
+      onDone();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo cambiar la fecha");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form onSubmit={onSubmit} className="mb-4 space-y-3 rounded-xl border border-slate-200 bg-white p-4">
+      <h2 className="text-sm font-semibold text-slate-700">Cambiar fecha de la solicitud</h2>
+      <p className="text-xs text-slate-400">Queda registrado quién la cambió, la fecha anterior, la nueva y el motivo.</p>
+      {error && <p className="rounded-md bg-red-50 p-2 text-sm text-red-700">{error}</p>}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <input
+          type="date"
+          max={today}
+          aria-label="Nueva fecha"
+          className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+        />
+        <input
+          placeholder="Motivo (p. ej. carga de solicitud antigua)"
+          aria-label="Motivo del cambio"
+          className="rounded-md border border-slate-300 px-3 py-2 text-sm sm:col-span-2"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+        />
+      </div>
+      <div className="flex gap-2">
+        <button
+          type="submit"
+          disabled={saving}
+          className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+        >
+          {saving ? "Guardando..." : "Guardar fecha"}
+        </button>
+        <button type="button" onClick={() => setOpen(false)} className="rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:bg-slate-100">
+          Cancelar
+        </button>
+      </div>
+    </form>
+  );
+}
 
 function ReferenceChecks({
   applicationId,

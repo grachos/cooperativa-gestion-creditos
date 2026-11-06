@@ -45,6 +45,7 @@ INSERT INTO permissions (code, description) VALUES
   ('associates:documents', NULL),
   ('applications:read', NULL),
   ('applications:cancel', NULL),
+  ('applications:edit_date', 'Cambiar la fecha de una solicitud (queda registrado quién y por qué)'),
   ('credits:read', NULL),
   ('credits:refinance', NULL),
   ('payments:verify', NULL),
@@ -74,6 +75,11 @@ WHERE r.code = 'CONTADORA';
 INSERT IGNORE INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id FROM roles r JOIN permissions p ON p.code IN ('alerts:write', 'applications:write', 'associates:write', 'collections:write', 'payments:write', 'reports:read')
 WHERE r.code = 'OPERADOR';
+
+-- Cambiar la fecha de una solicitud (cargas manuales con fecha de hoy): solo el administrador por defecto.
+INSERT IGNORE INTO role_permissions (role_id, permission_id)
+SELECT r.id, p.id FROM roles r JOIN permissions p ON p.code = 'applications:edit_date'
+WHERE r.code = 'ADMIN';
 
 -- Permisos por módulo (reunión 2026-10-16): cada rol conserva lo que ya podía hacer.
 INSERT IGNORE INTO role_permissions (role_id, permission_id)

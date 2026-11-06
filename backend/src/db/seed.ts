@@ -24,6 +24,7 @@ const PERMISSIONS = [
   "associates:documents",
   "applications:read",
   "applications:cancel",
+  "applications:edit_date",
   "credits:read",
   "credits:refinance",
   "payments:verify",

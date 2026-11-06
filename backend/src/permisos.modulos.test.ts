@@ -97,7 +97,7 @@ describe.skipIf(process.env.TEST_DB !== "1")("Permisos por módulo y acción (My
     const catalog = (await call("GET", "/users/permissions")).body.data as Array<{ module: string; label: string; actions: Array<{ code: string; label: string }> }>;
     const byModule = Object.fromEntries(catalog.map((m) => [m.module, m.actions.map((a) => a.code)]));
     expect(byModule.associates).toEqual(["associates:read", "associates:create", "associates:update", "associates:documents"]);
-    expect(byModule.applications).toEqual(["applications:read", "applications:write", "applications:cancel", "applications:review", "applications:approve"]);
+    expect(byModule.applications).toEqual(["applications:read", "applications:write", "applications:cancel", "applications:edit_date", "applications:review", "applications:approve"]);
     expect(byModule.payments).toEqual(["payments:write", "payments:verify", "payments:reverse", "payments:payoff"]);
     expect(catalog.every((m) => m.label && m.actions.every((a) => a.label))).toBe(true);
     expect(catalog.flatMap((m) => m.actions.map((a) => a.code))).not.toContain("associates:write"); // el permiso antiguo ya no se muestra

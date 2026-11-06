@@ -72,6 +72,8 @@ export function describeAudit(row: AuditRow): string {
     }
     case "credit_application:REJECT":
       return "Rechazó la solicitud";
+    case "credit_application:DATE_CHANGE":
+      return `Cambió la fecha de la solicitud de ${String(ov.date ?? "?")} a ${String(nv.date ?? "?")}`;
     case "credit_application:CANCEL":
       return `Canceló la solicitud${ov.status ? ` (estaba ${String(ov.status).toLowerCase().replace("_", " ")})` : ""}`;
     case "credit:DISBURSE":

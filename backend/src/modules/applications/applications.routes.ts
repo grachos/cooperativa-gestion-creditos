@@ -561,6 +561,41 @@ applicationsRouter.post(
   })
 );
 
+// La fecha de la solicitud (created_at) sale de la hora de carga; al cargar solicitudes antiguas a mano hay que
+// corregirla. Solo cambia esa fecha: el historial de estados conserva la hora real de cada acción, y el cambio
+// queda en la actividad con quién, cuándo, la fecha anterior, la nueva y el motivo.
+const dateChangeSchema = z.object({
+  date: z.string().date("Fecha inválida (use AAAA-MM-DD)"),
+  reason: z.string().trim().min(3, "Indique el motivo del cambio").max(255)
+});
+
+applicationsRouter.patch(
+  "/:id/date",
+  requirePermission("applications:edit_date"),
+  asyncHandler(async (req, res) => {
+    const { id } = idParam.parse(req.params);
+    const { date, reason } = dateChangeSchema.parse(req.body);
+    if (date > new Date().toISOString().slice(0, 10)) throw new HttpError(400, "La fecha no puede ser futura");
+    // Mediodía UTC: se ve el mismo día en Colombia (UTC-5) y en cualquier zona cercana.
+    const newValue = `${date} 12:00:00`;
+    await withTransaction(async (conn) => {
+      const app = await lockApplication(conn, id);
+      await conn.query(`UPDATE credit_applications SET created_at = ? WHERE id = ?`, [newValue, id]);
+      await recordAudit(conn, {
+        entity: "credit_application",
+        entityId: id,
+        action: "DATE_CHANGE",
+        oldValue: { date: String(app.created_at).slice(0, 10), createdAt: String(app.created_at) },
+        newValue: { date, createdAt: newValue },
+        userId: req.user!.id,
+        ipAddress: req.ip,
+        reason
+      });
+    });
+    res.json({ id, createdAt: newValue });
+  })
+);
+
 applicationsRouter.post(
   "/:id/cancel",
   requirePermission("applications:cancel"),

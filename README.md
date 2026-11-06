@@ -619,6 +619,16 @@ campos de control (saldo y cuota según el Excel anterior) para compararlos con 
 redondeada hacia arriba a $100). La última columna se calcula sola. La herramienta de importación que lee esta
 plantilla aún no existe: por ahora es solo el formato.
 
+## Cambiar la fecha de una solicitud
+
+Al cargar solicitudes antiguas a mano, la fecha queda con la de hoy. Quien tenga el permiso
+`applications:edit_date` («Cambiar la fecha de una solicitud»; el rol ADMIN lo trae por defecto y se puede dar o
+quitar por usuario en Usuarios) ve en el detalle de la solicitud el botón «Cambiar fecha de la solicitud»
+(`PATCH /applications/:id/date`, fecha no futura y motivo obligatorio). Solo cambia la fecha de la solicitud: el
+historial de estados conserva la hora real de cada acción. El cambio queda en Actividad: quién, cuándo, fecha
+anterior, fecha nueva y motivo ("Cambió la fecha de la solicitud de … a …"). No cambia la fecha de desembolso de un
+crédito ya creado.
+
 ## Selector de titular y codeudores con búsqueda
 
 En «Nueva solicitud», el titular y los codeudores se eligen con un campo donde se escribe para buscar
