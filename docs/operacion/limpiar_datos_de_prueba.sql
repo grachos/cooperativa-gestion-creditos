@@ -19,36 +19,39 @@ SELECT @conservados AS usuarios_que_se_conservan,
        (SELECT COUNT(*) FROM payments) AS pagos_antes;
 
 START TRANSACTION;
-SET FOREIGN_KEY_CHECKS = 0;
 
-DELETE FROM payment_allocations;
-DELETE FROM payments;
-DELETE FROM credit_adjustments;
-DELETE FROM credit_schedule_installments;
-DELETE FROM collection_actions;
-DELETE FROM credit_legal_documents;
-DELETE FROM delinquency_calculations;
+-- Orden: primero las tablas que dependen de otras (hijas), al final las de las que dependen. No usa
+-- FOREIGN_KEY_CHECKS: phpMyAdmin lo vuelve a activar y el borrado falla si el orden no es el correcto.
 DELETE FROM alerts;
-DELETE FROM notifications;
-DELETE FROM credit_participants;
-DELETE FROM credits;
 DELETE FROM application_disbursements;
 DELETE FROM application_reference_checks;
+DELETE FROM associate_documents;
+DELETE FROM audit_logs;
+DELETE FROM collection_actions;
 DELETE FROM credit_application_documents;
 DELETE FROM credit_application_status_history;
-DELETE FROM credit_applications;
-DELETE FROM associate_documents;
-DELETE FROM associates;
-DELETE FROM societies;
-DELETE FROM integration_attempts;
-DELETE FROM integration_events;
-DELETE FROM audit_logs;
-DELETE FROM login_activity;
-DELETE FROM password_reset_tokens;
+DELETE FROM credit_legal_documents;
+DELETE FROM credit_participants;
+DELETE FROM delinquency_calculations;
 DELETE FROM idempotency_keys;
-DELETE FROM realtime_events;
+DELETE FROM integration_attempts;
 DELETE FROM job_runs;
+DELETE FROM login_activity;
+DELETE FROM notifications;
+DELETE FROM password_reset_tokens;
+DELETE FROM payment_allocations;
+DELETE FROM realtime_events;
 DELETE FROM sequences;
+DELETE FROM credit_adjustments;
+DELETE FROM integration_events;
+DELETE FROM payments;
+DELETE FROM credit_schedule_installments;
+-- Un crédito refinanciado apunta a otro crédito: se sueltan esos enlaces antes de borrarlos.
+UPDATE credits SET refinanced_from_credit_id = NULL, refinanced_to_credit_id = NULL;
+DELETE FROM credits;
+DELETE FROM credit_applications;
+DELETE FROM societies;
+DELETE FROM associates;
 
 DELETE FROM user_permissions WHERE user_id IN (SELECT id FROM users WHERE NOT FIND_IN_SET(email, @conservar));
 DELETE FROM user_roles       WHERE user_id IN (SELECT id FROM users WHERE NOT FIND_IN_SET(email, @conservar));
@@ -57,8 +60,6 @@ UPDATE parameters SET updated_by = NULL
 DELETE FROM users WHERE NOT FIND_IN_SET(email, @conservar);
 -- Quita las sesiones abiertas de los usuarios que se conservan (tendrán que volver a iniciar sesión).
 UPDATE users SET refresh_token_hash = NULL;
-
-SET FOREIGN_KEY_CHECKS = 1;
 
 -- Si no se conservaba a nadie, se revierte todo; si no, se confirma.
 SET @fin = IF(@conservados > 0, 'COMMIT', 'ROLLBACK');
