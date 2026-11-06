@@ -601,6 +601,15 @@ no tuvo que confirmarlo; se ajusta cuando quiera):
 - Solo queda en la actividad lo que se hizo desde el 16 de octubre en adelante para revisión de documentos,
   referencias, permisos, pagos verificados y gestiones; lo anterior no tenía registro.
 
+## Limpiar los datos de prueba antes de cargar los reales
+
+`docs/operacion/limpiar_datos_de_prueba.sql` borra asociados, sociedades, solicitudes, créditos, pagos, alertas,
+auditoría, sesiones y los usuarios que no se indiquen, y reinicia la numeración de créditos. Conserva la
+estructura, roles, permisos, parámetros y los usuarios cuyo correo se ponga en `@conservar`. Se ejecuta en
+phpMyAdmin (pestaña SQL) **después de exportar un respaldo**; corre en una transacción y se revierte solo si
+`@conservar` no coincide con ningún usuario. No se puede deshacer una vez confirmado. Probado en la base de pruebas
+local (ambas salidas); no se ha ejecutado en producción.
+
 ## Carga masiva de créditos (Excel)
 
 Plantilla: [`docs/plantillas/plantilla_creditos.xlsx`](docs/plantillas/plantilla_creditos.xlsx). Un crédito por
