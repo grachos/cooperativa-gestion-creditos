@@ -619,6 +619,28 @@ campos de control (saldo y cuota según el Excel anterior) para compararlos con 
 redondeada hacia arriba a $100). La última columna se calcula sola. La herramienta de importación que lee esta
 plantilla aún no existe: por ahora es solo el formato.
 
+## Protección anti-bots (Cloudflare Turnstile)
+
+**Estado: en construcción por incrementos** (1 de 4 hecho). Protegerá `POST /auth/login`, `/auth/forgot-password` y
+`/auth/reset-password` (no hay registro público ni formularios abiertos: los usuarios los crea un administrador).
+
+- **Incremento 1 (hecho): verificador del servidor** `backend/src/security/turnstile.ts`, `verifyTurnstile(token, action,
+  ip)`. Llama a `siteverify` de Cloudflare y **falla cerrado**: sin llave secreta, con Cloudflare caído, con tiempo
+  agotado (5 s) o respuesta ilegible, rechaza. También rechaza si la acción no es la del formulario, si el `hostname`
+  no es propio, o si el token es ausente, vencido (5 min) o reutilizado (un solo uso). Códigos: `CAPTCHA-01` dominio no
+  autorizado, `CAPTCHA-02` verificación fallida, `CAPTCHA-03` token ausente/inválido/vencido/reutilizado. Los
+  `error-codes` de Cloudflare solo van a los registros. Aún **no está conectado a ninguna ruta**.
+- **Variables** (`backend/.env.example`): `TURNSTILE_SITE_KEY` (pública), `TURNSTILE_SECRET_KEY` (solo servidor),
+  `TURNSTILE_ALLOWED_HOSTNAMES` (`coomulnissi.cc,www.coomulnissi.cc`) y `TURNSTILE_ENFORCE` (`true` en producción; en
+  pruebas automáticas su valor por defecto es `false`).
+- **Claves de prueba oficiales** de Cloudflare para desarrollo y pruebas (siempre pasa / siempre falla): ver
+  `TURNSTILE_TEST_KEYS`. Con ellas no se comprueban acción ni dominio (los tokens son ficticios) y **en producción se
+  rechazan siempre**.
+- Pendiente: middleware y rutas, límite por IP en base de datos, auditoría, widget del frontend y llaves de API.
+- **Llaves de API para integraciones (a futuro):** hoy no hay ninguna integración; el cron de alertas ya usa su propio
+  secreto (`CRON_SECRET`). Cuando haga falta una, se autenticará con llave propia por cabecera y no pasará por Turnstile
+  (incremento 4: la infraestructura quedará lista para no tener problemas de ingreso).
+
 ## Cambiar la fecha de una solicitud
 
 Al cargar solicitudes antiguas a mano, la fecha queda con la de hoy. Quien tenga el permiso

@@ -86,7 +86,27 @@ const envSchema = z
     REQUEST_LOG: z.enum(["off", "slow", "all"]).default("slow"),
     SLOW_REQUEST_MS: z.coerce.number().int().min(1).default(1000),
     SLOW_QUERY_MS: z.coerce.number().int().min(1).default(500),
-    CRON_SECRET: z.string().min(16).optional()
+    CRON_SECRET: z.string().min(16).optional(),
+    // Cloudflare Turnstile (anti-bots en login, recuperar y restablecer contraseña). SITE_KEY es pública (la recibe el
+    // navegador); SECRET_KEY solo vive en el servidor. ALLOWED_HOSTNAMES: dominios propios, separados por coma, que
+    // Cloudflare debe reportar en la verificación (p. ej. "coomulnissi.cc,www.coomulnissi.cc").
+    // TURNSTILE_ENFORCE: por defecto true (falla cerrado: sin llave o sin Cloudflare nadie pasa); en pruebas
+    // automáticas (NODE_ENV=test) el valor por defecto es false. Ver security/turnstile.ts.
+    TURNSTILE_SITE_KEY: z.string().optional(),
+    TURNSTILE_SECRET_KEY: z.string().optional(),
+    TURNSTILE_ALLOWED_HOSTNAMES: z
+      .string()
+      .optional()
+      .transform((v) =>
+        (v ?? "")
+          .split(",")
+          .map((h) => h.trim().toLowerCase())
+          .filter(Boolean)
+      ),
+    TURNSTILE_ENFORCE: z
+      .string()
+      .optional()
+      .transform((v) => (v === undefined ? process.env.NODE_ENV !== "test" : v.trim().toLowerCase() === "true"))
   })
   ;
 
