@@ -621,7 +621,7 @@ plantilla aún no existe: por ahora es solo el formato.
 
 ## Protección anti-bots (Cloudflare Turnstile)
 
-**Estado: en construcción por incrementos** (2 de 4 hechos; los incrementos 1–2 viven en la rama `claude/brave-sagan-zk3u2o` y salen a producción junto con la pantalla, incremento 3). Protegerá `POST /auth/login`, `/auth/forgot-password` y
+**Estado: en construcción por incrementos** (3 de 4 hechos; los incrementos 2–3 viven en la rama `claude/brave-sagan-zk3u2o` y salen a producción juntos, cuando las claves estén creadas en Hostinger). Protegerá `POST /auth/login`, `/auth/forgot-password` y
 `/auth/reset-password` (no hay registro público ni formularios abiertos: los usuarios los crea un administrador).
 
 - **Incremento 1 (hecho): verificador del servidor** `backend/src/security/turnstile.ts`, `verifyTurnstile(token, action,
@@ -651,9 +651,31 @@ plantilla aún no existe: por ahora es solo el formato.
     del acceso, usuario si se conoce. El usuario o correo escrito se guarda solo como hash SHA-256; nunca contraseñas ni
     tokens. La política de contenido (`helmet`) permite el script y el iframe de `challenges.cloudflare.com`.
   - El bloqueo previo por usuario existente (`login_activity`) se conserva.
-- Pendiente: widget del frontend (incremento 3) y llaves de API (incremento 4).
-- **Antes de poner `TURNSTILE_ENFORCE=true` en Hostinger espere al incremento 3:** con el reto exigido en el servidor y
-  sin el widget en la pantalla nadie podría iniciar sesión.
+- **Incremento 3 (hecho): el widget en la pantalla.** `TurnstileWidget.tsx` (carga `api.js` una vez, modo Managed, una
+  `action` por formulario) y el hook `useTurnstile(action)`, en las pantallas de ingreso, «¿Olvidaste tu contraseña?» y
+  restablecer contraseña. El botón de envío queda **deshabilitado hasta tener token**; si el token vence, se agota el
+  tiempo o el widget da error, se descarta y se pide otro reto solo; después de **cada** envío (salga bien o mal) se pide
+  otro, porque el token es de un solo uso. Si el script de Cloudflare no carga (bloqueador de contenido) o el servidor no
+  tiene clave pública, se avisa con un mensaje y no se deja enviar. La clave pública y si se exige el reto los entrega
+  `GET /api/v1/auth/captcha-config` (nunca la clave secreta), así que no hace falta recompilar al cambiar las claves.
+  Los rechazos del reto traen `message`; el cliente de la API lo muestra.
+- Pendiente: llaves de API para integraciones (incremento 4).
+
+### Puesta en marcha en Hostinger (orden)
+
+1. En Cloudflare → Turnstile → *Add site*, modo **Managed**, dominios `coomulnissi.cc` y `www.coomulnissi.cc`. Copie la
+   *site key* y la *secret key*.
+2. En Hostinger (variables del sitio Node.js) cree `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`,
+   `TURNSTILE_ALLOWED_HOSTNAMES=coomulnissi.cc,www.coomulnissi.cc` y `TURNSTILE_ENFORCE=true`.
+3. **Después** se publica este código (la rama de despliegue recibe los incrementos 2–3). Hasta entonces las variables no
+   hacen nada.
+4. Compruebe: la pantalla de ingreso muestra el reto, el botón se habilita al superarlo y se puede entrar. La auditoría
+   queda en la tabla `auth_audit`.
+
+**Salida de emergencia:** si el reto no apareciera o nadie pudiera entrar (p. ej. un dominio sin autorizar en Cloudflare),
+ponga `TURNSTILE_ENFORCE=false` en Hostinger y reinicie la aplicación: el servidor deja de exigirlo y la pantalla no lo
+muestra. Los límites de intentos y la auditoría siguen activos. Con `TURNSTILE_ENFORCE=true` y sin llave secreta el
+servidor falla cerrado a propósito (nadie entra).
 - **Llaves de API para integraciones (a futuro):** hoy no hay ninguna integración; el cron de alertas ya usa su propio
   secreto (`CRON_SECRET`). Cuando haga falta una, se autenticará con llave propia por cabecera y no pasará por Turnstile
   (incremento 4: la infraestructura quedará lista para no tener problemas de ingreso).

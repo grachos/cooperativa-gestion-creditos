@@ -506,21 +506,25 @@ aparte; (b) el bloqueo por intentos fallidos solo existía para cuentas que exis
 podía saber cuáles existían por cuándo recibía 429; (c) no quedaba rastro de los intentos con usuario inexistente ni de
 la IP, el agente o el resultado; (d) nada frenaba a un bot que prueba contraseñas sin parar.
 
-**Hecho (incrementos 1 y 2):** verificador de Turnstile que falla cerrado (`security/turnstile.ts`, 19 pruebas);
+**Hecho (incrementos 1, 2 y 3):** verificador de Turnstile que falla cerrado (`security/turnstile.ts`, 19 pruebas);
 `security/authGuard.ts` con límites en la base (`auth_attempts`), reto por acción y auditoría (`auth_audit`) conectados
 a `/auth/login`, `/forgot-password` y `/reset-password`; migración 030 (repetible; probada aplicada, repetida e
 interrumpida); política de contenido de `helmet` que admite `challenges.cloudflare.com`; limpieza horaria (intentos a los
-2 días, auditoría al año). Detalle en el README ("Protección anti-bots").
+2 días, auditoría al año); widget y hook del frontend en las tres pantallas (botón deshabilitado hasta tener token, reinicio al vencer/fallar y tras cada envío) y `GET /auth/captcha-config`. Detalle en el README ("Protección anti-bots").
 
 **Cuidados:** el intento se inserta ANTES de verificar y se marca `success = 1` si sale bien (una ráfaga simultánea de
 14 intentos deja pasar como mucho el límite); los fallos se cuentan desde el último acceso exitoso por `id` y no por hora
 (la hora tiene precisión de segundos y los fallos del mismo segundo se perdían: lo encontró una prueba). El
 identificador tecleado se guarda como hash.
 
-**Pendiente:** el widget en la pantalla (incremento 3), las llaves de API para integraciones (incremento 4), y probar el
-contacto real con Cloudflare (desde la sesión de desarrollo no hay salida a esos dominios: la primera verificación real
-será con las claves de producción). No se publica en producción hasta tener el incremento 3, porque con
-`TURNSTILE_ENFORCE=true` y sin widget nadie podría iniciar sesión.
+**Pruebas:** verificador (19), guardia con base real (7: límites por IP/identificador/total, ráfaga simultánea, reto,
+auditoría), rutas reales con `TURNSTILE_ENFORCE=true` (4), hook y pantallas del frontend (15). Rompiendo a propósito la
+condición «sin token no se envía» fallan 8 pruebas. Suite backend 185, frontend 65.
+
+**Pendiente:** publicar en producción (requiere que las claves estén creadas en Hostinger; salida de emergencia:
+`TURNSTILE_ENFORCE=false`), las llaves de API para integraciones (incremento 4), y probar el contacto real con Cloudflare y
+el widget en un navegador (desde la sesión de desarrollo no hay salida a esos dominios: la primera verificación real
+será en producción con las claves reales).
 
 ## 4. Cómo verificar
 
@@ -640,6 +644,7 @@ Lo que ya está en el código (§3.13) permite diagnosticar; falta lo que avisa 
 
 | Fecha | Cambio |
 |---|---|
+| 2026-11-08 | Anti-bots, incremento 3: widget de Turnstile en ingreso, recuperar y restablecer contraseña, y `GET /auth/captcha-config` (§3.19; sin publicar hasta crear las claves). |
 | 2026-11-08 | Anti-bots en login/recuperar/restablecer: verificador de Turnstile, límites por IP e identificador en la base de datos, auditoría y migración 030 (§3.19; sin publicar hasta el widget). |
 | 2026-10-19 | H9: refinanciación con la regla de la cooperativa (pendiente + interés del préstamo inicial × cuotas pendientes, sin interés propio, capital/interés heredados separados) y cuota redondeada hacia arriba a $100 (migración 029, §3.18). |
 | 2026-10-19 | Reglas CHECK de montos en la base (migración 028, condicionales por versión y por datos existentes) y aviso en el arranque con la versión de la base (§3.17). |

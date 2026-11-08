@@ -60,6 +60,13 @@ async function loadUserWithAccess(userId: number) {
   return { user, roles, permissions: [...permissionSet] };
 }
 
+// Configuración pública del reto para la pantalla de acceso: la clave del sitio es pública por diseño (la ve cualquier
+// navegador); la clave secreta NUNCA sale de aquí. Se entrega desde el servidor para no tener que recompilar el
+// frontend cada vez que cambian las claves.
+authRouter.get("/captcha-config", (_req, res) => {
+  res.json({ enforce: env.TURNSTILE_ENFORCE, siteKey: env.TURNSTILE_ENFORCE ? (env.TURNSTILE_SITE_KEY ?? null) : null });
+});
+
 authRouter.post(
   "/login",
   authRateLimit("login"),

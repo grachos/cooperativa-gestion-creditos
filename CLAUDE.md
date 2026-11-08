@@ -38,3 +38,11 @@ hizo, cómo verificarlo y qué queda pendiente. Si algo no se pudo probar, se di
 
 ## Despliegue
 - Hostinger compila desde la rama `claude/gifted-fermi-xbyqul` (la rama por defecto).
+
+## Rutas públicas
+- Toda ruta que se pueda llamar sin sesión (login, recuperar/restablecer contraseña, y las que se agreguen) lleva
+  `authRateLimit(acción)` y `requireTurnstile(acción)` (`security/authGuard.ts`) y un formulario con `useTurnstile(acción)`.
+  Los límites viven en la base, no en memoria (el hosting corre varios procesos).
+- Estamos en producción: el despliegue es automático al subir a la rama de despliegue. Un cambio que dependa de variables
+  de entorno nuevas o de una pantalla que aún no existe va primero a la otra rama, y se publica cuando todo esté listo.
+- `docs/operacion/limpiar_datos_de_prueba.sql` borra todo: no se ejecuta si ya hay datos reales.

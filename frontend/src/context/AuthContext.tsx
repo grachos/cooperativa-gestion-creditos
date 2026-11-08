@@ -14,7 +14,7 @@ interface AuthContextValue {
   loading: boolean;
   justLoggedIn: boolean;
   clearJustLoggedIn: () => void;
-  login: (identifier: string, password: string) => Promise<void>;
+  login: (identifier: string, password: string, captcha?: Record<string, string>) => Promise<void>;
   logout: () => Promise<void>;
   hasPermission: (permission: string) => boolean;
 }
@@ -55,10 +55,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
-  async function login(identifier: string, password: string) {
+  async function login(identifier: string, password: string, captcha: Record<string, string> = {}) {
     const data = await api.post<{ accessToken: string; refreshToken: string; user: AuthUser }>(
       "/auth/login",
-      { identifier, password }
+      { identifier, password, ...captcha } // captcha: { "cf-turnstile-response": token } cuando se exige el reto
     );
     localStorage.setItem("accessToken", data.accessToken);
     localStorage.setItem("refreshToken", data.refreshToken);

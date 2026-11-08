@@ -14,6 +14,7 @@ describe.skipIf(process.env.TEST_DB !== "1")("Anti-bots en las rutas reales (enf
   beforeAll(async () => {
     process.env.TURNSTILE_ENFORCE = "true";
     delete process.env.TURNSTILE_SECRET_KEY;
+    process.env.TURNSTILE_SITE_KEY = "clave-publica-de-prueba";
     const [{ app }, poolMod] = await Promise.all([import("./app.js"), import("./db/pool.js")]);
     pool = poolMod.pool as never;
     await new Promise<void>((r) => {
@@ -47,6 +48,15 @@ describe.skipIf(process.env.TEST_DB !== "1")("Anti-bots en las rutas reales (enf
     const res = await post("/login", { identifier: who, password: "x" });
     expect(res.status).toBe(403);
     expect((await res.json()).code).toMatch(/^CAPTCHA-0[23]$/);
+  });
+
+  it("GET /auth/captcha-config entrega la clave pública y si se exige el reto, y nunca la clave secreta", async () => {
+    const res = await fetch(`${base}/api/v1/auth/captcha-config`);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(Object.keys(body).sort()).toEqual(["enforce", "siteKey"]);
+    expect(body).toEqual({ enforce: true, siteKey: "clave-publica-de-prueba" });
+    expect(res.headers.get("cache-control")).toBe("no-store");
   });
 
   it("la política de contenido permite el script y el iframe de challenges.cloudflare.com", async () => {

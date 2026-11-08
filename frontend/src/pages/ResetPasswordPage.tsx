@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { PasswordInput } from "../components/PasswordInput";
+import { useTurnstile } from "../hooks/useTurnstile";
 
 export default function ResetPasswordPage() {
   const [searchParams] = useSearchParams();
@@ -15,6 +16,7 @@ export default function ResetPasswordPage() {
   const [done, setDone] = useState(false);
 
   const missingLink = !token || !uid;
+  const captcha = useTurnstile("reset_password");
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -25,12 +27,13 @@ export default function ResetPasswordPage() {
     }
     setSubmitting(true);
     try {
-      await api.post("/auth/reset-password", { token, uid: Number(uid), newPassword });
+      await api.post("/auth/reset-password", { token, uid: Number(uid), newPassword, ...captcha.payload });
       setDone(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo restablecer la contraseña");
     } finally {
       setSubmitting(false);
+      captcha.reset(); // el token es de un solo uso
     }
   }
 
@@ -96,9 +99,12 @@ export default function ResetPasswordPage() {
               onChange={(e) => setConfirmPassword(e.target.value)}
             />
 
+            {captcha.widget}
+            {captcha.message && <p className="mb-3 rounded-md bg-amber-50 p-2 text-sm text-amber-800">{captcha.message}</p>}
+
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || !captcha.canSubmit}
               className="w-full rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
             >
               {submitting ? "Guardando..." : "Guardar nueva contraseña"}

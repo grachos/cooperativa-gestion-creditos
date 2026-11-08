@@ -88,7 +88,8 @@ export async function apiFetch<T>(path: string, options: ApiOptions = {}): Promi
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: "Error desconocido" }));
-    let message = body.error ?? "Error en la solicitud";
+    // Los rechazos del reto anti-bots traen `message` (code CAPTCHA-0x) en vez de `error`.
+    let message = body.error ?? body.message ?? "Error en la solicitud";
     if (Array.isArray(body.details) && body.details.length > 0) {
       const details = body.details
         .map((d: { path?: unknown[]; message?: string }) => {

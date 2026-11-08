@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { api } from "../lib/api";
 import { SplashIntro } from "../components/SplashIntro";
 import { PasswordInput } from "../components/PasswordInput";
+import { useTurnstile } from "../hooks/useTurnstile";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -21,18 +22,22 @@ export default function LoginPage() {
   const [forgotSubmitting, setForgotSubmitting] = useState(false);
 
   const [splashDone, setSplashDone] = useState(false);
+  // Reto anti-bots (Cloudflare Turnstile): una acción distinta por formulario. El botón queda deshabilitado hasta tener token.
+  const loginCaptcha = useTurnstile("login");
+  const forgotCaptcha = useTurnstile("forgot_password");
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     setSubmitting(true);
     try {
-      await login(identifier, password);
+      await login(identifier, password, loginCaptcha.payload);
       navigate("/", { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al iniciar sesión");
     } finally {
       setSubmitting(false);
+      loginCaptcha.reset(); // el token es de un solo uso: salga bien o mal, hay que pedir otro
     }
   }
 
@@ -41,12 +46,13 @@ export default function LoginPage() {
     setForgotError(null);
     setForgotSubmitting(true);
     try {
-      await api.post("/auth/forgot-password", { identifier: forgotIdentifier });
+      await api.post("/auth/forgot-password", { identifier: forgotIdentifier, ...forgotCaptcha.payload });
       setMode("forgot-sent");
     } catch (err) {
       setForgotError(err instanceof Error ? err.message : "No se pudo procesar la solicitud");
     } finally {
       setForgotSubmitting(false);
+      forgotCaptcha.reset();
     }
   }
 
@@ -112,9 +118,12 @@ export default function LoginPage() {
               ¿Olvidaste tu contraseña?
             </button>
 
+            {loginCaptcha.widget}
+            {loginCaptcha.message && <p className="mb-3 rounded-md bg-amber-50 p-2 text-sm text-amber-800">{loginCaptcha.message}</p>}
+
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || !loginCaptcha.canSubmit}
               className="w-full rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
             >
               {submitting ? "Ingresando..." : "Ingresar"}
@@ -137,15 +146,18 @@ export default function LoginPage() {
               id="forgot-identifier"
               name="username"
               autoComplete="username"
-              className="mb-6 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              className="mb-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               value={forgotIdentifier}
               onChange={(e) => setForgotIdentifier(e.target.value)}
               required
             />
 
+            {forgotCaptcha.widget}
+            {forgotCaptcha.message && <p className="mb-3 rounded-md bg-amber-50 p-2 text-sm text-amber-800">{forgotCaptcha.message}</p>}
+
             <button
               type="submit"
-              disabled={forgotSubmitting}
+              disabled={forgotSubmitting || !forgotCaptcha.canSubmit}
               className="w-full rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
             >
               {forgotSubmitting ? "Enviando..." : "Enviar enlace de restablecimiento"}
