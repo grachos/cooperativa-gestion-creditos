@@ -621,7 +621,7 @@ plantilla aún no existe: por ahora es solo el formato.
 
 ## Protección anti-bots (Cloudflare Turnstile)
 
-**Estado: en construcción por incrementos** (1 de 4 hecho). Protegerá `POST /auth/login`, `/auth/forgot-password` y
+**Estado: en construcción por incrementos** (2 de 4 hechos; los incrementos 1–2 viven en la rama `claude/brave-sagan-zk3u2o` y salen a producción junto con la pantalla, incremento 3). Protegerá `POST /auth/login`, `/auth/forgot-password` y
 `/auth/reset-password` (no hay registro público ni formularios abiertos: los usuarios los crea un administrador).
 
 - **Incremento 1 (hecho): verificador del servidor** `backend/src/security/turnstile.ts`, `verifyTurnstile(token, action,
@@ -636,7 +636,24 @@ plantilla aún no existe: por ahora es solo el formato.
 - **Claves de prueba oficiales** de Cloudflare para desarrollo y pruebas (siempre pasa / siempre falla): ver
   `TURNSTILE_TEST_KEYS`. Con ellas no se comprueban acción ni dominio (los tokens son ficticios) y **en producción se
   rechazan siempre**.
-- Pendiente: middleware y rutas, límite por IP en base de datos, auditoría, widget del frontend y llaves de API.
+- **Incremento 2 (hecho): rutas protegidas** (`backend/src/security/authGuard.ts`, migración `030_antibots.sql`).
+  `POST /auth/login`, `/forgot-password` y `/reset-password` pasan por `authRateLimit` → `requireTurnstile` → manejador:
+  - **Límites en la base de datos** (tabla `auth_attempts`, ventana de 15 min; antes el límite estaba en memoria y cada
+    proceso contaba aparte): peticiones totales por IP (`AUTH_RATE_LIMIT`, ahora por acción), intentos de login
+    fallidos por IP (`AUTH_IP_FAILED_LIMIT`, 20) y fallidos por identificador (`AUTH_MAX_FAILED_LOGINS`, 5, desde el
+    último acceso exitoso). El límite por identificador se aplica **exista o no la cuenta** (antes solo a las que
+    existían, lo que permitía averiguar qué usuarios hay). Respuesta `429` con `Retry-After`. El intento se registra
+    antes de verificar, así una ráfaga simultánea no se cuela. Se purga a los 2 días.
+  - **Reto de Turnstile** con la acción del formulario (`login`, `forgot_password`, `reset_password`): el token va en
+    el cuerpo (`cf-turnstile-response`) o en la cabecera del mismo nombre. Si falla: `403 { code, status:
+    "validation_failed", message }` (sin motivos ni códigos de Cloudflare). Con `TURNSTILE_ENFORCE=false` se omite.
+  - **Auditoría** (tabla `auth_audit`, se purga al año): fecha, IP, agente de usuario, acción, resultado de Turnstile y
+    del acceso, usuario si se conoce. El usuario o correo escrito se guarda solo como hash SHA-256; nunca contraseñas ni
+    tokens. La política de contenido (`helmet`) permite el script y el iframe de `challenges.cloudflare.com`.
+  - El bloqueo previo por usuario existente (`login_activity`) se conserva.
+- Pendiente: widget del frontend (incremento 3) y llaves de API (incremento 4).
+- **Antes de poner `TURNSTILE_ENFORCE=true` en Hostinger espere al incremento 3:** con el reto exigido en el servidor y
+  sin el widget en la pantalla nadie podría iniciar sesión.
 - **Llaves de API para integraciones (a futuro):** hoy no hay ninguna integración; el cron de alertas ya usa su propio
   secreto (`CRON_SECRET`). Cuando haga falta una, se autenticará con llave propia por cabecera y no pasará por Turnstile
   (incremento 4: la infraestructura quedará lista para no tener problemas de ingreso).

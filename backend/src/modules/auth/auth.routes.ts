@@ -9,9 +9,10 @@ import { asyncHandler, HttpError } from "../../middlewares/error.middleware.js";
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from "./auth.service.js";
 import { requireAuth } from "../../middlewares/auth.middleware.js";
 import { sendPasswordResetEmail } from "./mailer.js";
+import { authRateLimit, markAuthSuccess, requireTurnstile } from "../../security/authGuard.js";
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hora
-const MAX_FAILED_LOGINS = 5;
+const MAX_FAILED_LOGINS = env.AUTH_MAX_FAILED_LOGINS;
 const LOGIN_LOCK_WINDOW_MIN = 15;
 const MAX_RESET_EMAILS_PER_HOUR = 3;
 
@@ -61,6 +62,8 @@ async function loadUserWithAccess(userId: number) {
 
 authRouter.post(
   "/login",
+  authRateLimit("login"),
+  requireTurnstile("login"),
   asyncHandler(async (req, res) => {
     const { identifier, password } = loginSchema.parse(req.body);
 
@@ -70,6 +73,7 @@ authRouter.post(
     );
     const dbUser = (rows as any[])[0];
     if (!dbUser) throw new HttpError(401, "Credenciales inválidas");
+    res.locals.authUserId = dbUser.id;
 
     // Contador en BD (no en memoria): en Vercel cada invocación puede caer en
     // una instancia distinta, así que un límite en memoria no frenaría nada.
@@ -84,6 +88,7 @@ authRouter.post(
       [dbUser.id, LOGIN_LOCK_WINDOW_MIN, dbUser.id]
     );
     if (Number((failedRows as any[])[0].total) >= MAX_FAILED_LOGINS) {
+      res.locals.authOutcome = "LOCKED";
       throw new HttpError(
         429,
         `Demasiados intentos fallidos. Espera ${LOGIN_LOCK_WINDOW_MIN} minutos o restablece tu contraseña.`
@@ -102,6 +107,7 @@ authRouter.post(
     const access = await loadUserWithAccess(dbUser.id);
     if (!access) throw new HttpError(401, "Credenciales inválidas");
     if (access.permissions.length === 0) {
+      res.locals.authOutcome = "NO_ACCESS";
       throw new HttpError(403, "Tu usuario no tiene acceso al sistema. Contacta al administrador.");
     }
 
@@ -119,6 +125,8 @@ authRouter.post(
       [dbUser.id, req.ip]
     );
 
+    await markAuthSuccess(res); // reinicia el contador de fallos de este identificador
+    res.locals.authOutcome = "SUCCESS";
     res.json({
       accessToken,
       refreshToken,
@@ -135,6 +143,8 @@ authRouter.post(
 
 authRouter.post(
   "/forgot-password",
+  authRateLimit("forgot_password"),
+  requireTurnstile("forgot_password"),
   asyncHandler(async (req, res) => {
     const { identifier } = forgotPasswordSchema.parse(req.body);
 
@@ -155,6 +165,10 @@ authRouter.post(
       );
       underLimit = Number((recentRows as any[])[0].total) < MAX_RESET_EMAILS_PER_HOUR;
     }
+
+    if (dbUser) res.locals.authUserId = dbUser.id;
+    // Resultado interno para la auditoría (el cliente siempre recibe 204).
+    res.locals.authOutcome = !dbUser ? "UNKNOWN_USER" : underLimit ? "SENT" : "THROTTLED";
 
     // Siempre responde 204, exista o no el usuario y se haya enviado o no:
     // evita que alguien use este endpoint para averiguar qué cuentas existen.
@@ -186,6 +200,8 @@ authRouter.post(
 
 authRouter.post(
   "/reset-password",
+  authRateLimit("reset_password"),
+  requireTurnstile("reset_password"),
   asyncHandler(async (req, res) => {
     const { token, newPassword } = resetPasswordSchema.parse(req.body);
     const uid = Number(req.body?.uid);
@@ -205,7 +221,11 @@ authRouter.post(
         break;
       }
     }
-    if (!matchedTokenId) throw new HttpError(400, "El enlace de restablecimiento es inválido o venció");
+    if (!matchedTokenId) {
+      res.locals.authOutcome = "INVALID_TOKEN";
+      throw new HttpError(400, "El enlace de restablecimiento es inválido o venció");
+    }
+    res.locals.authUserId = uid;
 
     const passwordHash = await hashPassword(newPassword);
     await pool.query(`UPDATE users SET password_hash = ?, refresh_token_hash = NULL WHERE id = ?`, [
@@ -214,6 +234,7 @@ authRouter.post(
     ]);
     await pool.query(`UPDATE password_reset_tokens SET used_at = NOW() WHERE id = ?`, [matchedTokenId]);
 
+    res.locals.authOutcome = "RESET_OK";
     res.status(204).send();
   })
 );

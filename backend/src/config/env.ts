@@ -68,6 +68,16 @@ const envSchema = z
     // forgot-password, reset-password). Súbalo SOLO en un entorno de pruebas de
     // carga; en producción deje el valor por defecto.
     AUTH_RATE_LIMIT: z.coerce.number().int().positive().default(40),
+    // Anti-bots (security/authGuard.ts), ventana de 15 min, guardado en la base: intentos FALLIDOS de login por IP
+    // (protege contra probar una contraseña en muchas cuentas) y por identificador escrito (usuario o correo; el mismo
+    // límite se aplica exista o no la cuenta). En pruebas automáticas el límite por IP es muy alto para que varios
+    // archivos de prueba, que comparten IP, no se bloqueen entre sí.
+    AUTH_IP_FAILED_LIMIT: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(process.env.NODE_ENV === "test" ? 100000 : 20),
+    AUTH_MAX_FAILED_LOGINS: z.coerce.number().int().positive().default(5),
     // Pool de conexiones MySQL POR PROCESO. El plan de hosting limita el total de
     // conexiones simultáneas del usuario (max_user_connections): procesos × tamaño
     // del pool no debe superarlo. DB_QUEUE_LIMIT es cuántas peticiones pueden

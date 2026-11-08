@@ -4,7 +4,6 @@ import { fileURLToPath } from "node:url";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
-import rateLimit from "express-rate-limit";
 import { env } from "./config/env.js";
 import { pool } from "./db/pool.js";
 import { instanceId } from "./modules/alerts/sse.hub.js";
@@ -33,7 +32,21 @@ export const app = express();
 app.set("trust proxy", 1);
 // Primero de todo: asigna X-Request-Id y registra respuestas 5xx / lentas (ver middlewares/requestLog.ts).
 app.use(createRequestLog({ mode: env.REQUEST_LOG, slowMs: env.SLOW_REQUEST_MS, instanceId }));
-app.use(helmet());
+// Turnstile carga su script y su iframe desde challenges.cloudflare.com: sin esto la política de contenido por
+// defecto de helmet bloquea el widget.
+const CLOUDFLARE_CHALLENGES = "https://challenges.cloudflare.com";
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+        "script-src": ["'self'", CLOUDFLARE_CHALLENGES],
+        "frame-src": ["'self'", CLOUDFLARE_CHALLENGES],
+        "connect-src": ["'self'", CLOUDFLARE_CHALLENGES]
+      }
+    }
+  })
+);
 app.use(cors({ origin: env.CORS_ORIGIN, credentials: true }));
 app.use(express.json({ limit: "1mb" }));
 
@@ -59,19 +72,8 @@ app.use("/api", (_req, res, next) => {
   next();
 });
 
-// Límite por IP en autenticación (complementa el bloqueo por cuenta del
-// login): frena la prueba de contraseñas en muchas cuentas y el abuso del
-// correo de restablecimiento.
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: env.AUTH_RATE_LIMIT,
-  standardHeaders: "draft-7",
-  legacyHeaders: false,
-  message: { error: "Demasiadas solicitudes. Intenta de nuevo en unos minutos." }
-});
-app.use("/api/v1/auth/login", authLimiter);
-app.use("/api/v1/auth/forgot-password", authLimiter);
-app.use("/api/v1/auth/reset-password", authLimiter);
+// Autenticación: los límites por IP y por identificador, la auditoría y el reto de Turnstile viven en las propias
+// rutas (security/authGuard.ts), guardados en la base de datos; antes un límite en memoria contaba aparte por proceso.
 app.use("/api/v1/auth", authRouter);
 app.use("/api/v1/associates", associatesRouter);
 app.use("/api/v1/societies", societiesRouter);

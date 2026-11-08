@@ -4,6 +4,7 @@ import { pool } from "./db/pool.js";
 import { runMigrations } from "./db/migrate.js";
 import { idempotencyStore } from "./middlewares/idempotent.js";
 import { instanceId, purgeRealtimeEvents, sseHub } from "./modules/alerts/sse.hub.js";
+import { purgeAuthSecurityTables } from "./security/authGuard.js";
 import { runDailyAlertsJob } from "./modules/alerts/alerts.service.js";
 import { passwordImplementationName } from "./utils/password.js";
 
@@ -55,6 +56,7 @@ ready
 setInterval(() => {
   idempotencyStore.purgeExpired().catch((err) => console.error("Limpieza de idempotency_keys falló", err));
   purgeRealtimeEvents().catch((err) => console.error("Limpieza de realtime_events falló", err));
+  purgeAuthSecurityTables().catch((err) => console.error("Limpieza de auth_attempts/auth_audit falló", err));
 }, 60 * 60 * 1000).unref();
 
 // Job diario de mora/alertas (equivale al Vercel Cron). 11:00 UTC = 06:00 Colombia.

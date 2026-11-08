@@ -5,13 +5,19 @@
 -- cuyo correo pongas en @conservar. Reinicia la numeración de créditos (el próximo será CR-AAAA-00001).
 -- NO se puede deshacer: ANTES exporta la base completa en phpMyAdmin (Exportar → Rápido → SQL).
 --
+-- *** PELIGRO: borra TODOS los asociados, créditos y pagos que haya en la base, sean de prueba o reales. ***
+-- Solo es para dejar la aplicación en blanco ANTES de cargar los datos reales. Si ya hay datos reales, NO lo ejecute.
+-- Por seguridad no hace nada mientras @confirmar no diga exactamente 'SI, BORRAR TODO'.
+--
 -- Cómo usarlo: phpMyAdmin → base de datos de la cooperativa → pestaña SQL → pegar TODO este archivo,
 -- cambiar la línea de @conservar y ejecutar. Todo ocurre en una transacción: si @conservar no coincide con
 -- ningún usuario existente (nadie podría entrar después), se revierte y no cambia nada.
 
+SET @confirmar = 'NO';                     -- para borrar, cámbielo a: SI, BORRAR TODO
 SET @conservar = 'admin@coomulnissi.cc';   -- correos separados por coma, sin espacios
 
-SET @conservados = (SELECT COUNT(*) FROM users WHERE FIND_IN_SET(email, @conservar));
+-- Sin la confirmación escrita, @conservados queda en 0 y todo se revierte al final.
+SET @conservados = IF(@confirmar = 'SI, BORRAR TODO', (SELECT COUNT(*) FROM users WHERE FIND_IN_SET(email, @conservar)), 0);
 SELECT @conservados AS usuarios_que_se_conservan,
        (SELECT COUNT(*) FROM users) AS usuarios_antes,
        (SELECT COUNT(*) FROM associates) AS asociados_antes,
@@ -23,6 +29,8 @@ START TRANSACTION;
 -- Orden: primero las tablas que dependen de otras (hijas), al final las de las que dependen. No usa
 -- FOREIGN_KEY_CHECKS: phpMyAdmin lo vuelve a activar y el borrado falla si el orden no es el correcto.
 DELETE FROM alerts;
+DELETE FROM auth_attempts;
+DELETE FROM auth_audit;
 DELETE FROM application_disbursements;
 DELETE FROM application_reference_checks;
 DELETE FROM associate_documents;
@@ -67,7 +75,7 @@ PREPARE fin_stmt FROM @fin;
 EXECUTE fin_stmt;
 DEALLOCATE PREPARE fin_stmt;
 
-SELECT IF(@conservados > 0, 'LISTO: datos de prueba borrados', 'REVERTIDO: @conservar no coincide con ningún usuario') AS resultado,
+SELECT IF(@conservados > 0, 'LISTO: datos de prueba borrados', 'REVERTIDO: falta la confirmación (@confirmar) o @conservar no coincide con ningún usuario') AS resultado,
        (SELECT COUNT(*) FROM users) AS usuarios_despues,
        (SELECT COUNT(*) FROM associates) AS asociados_despues,
        (SELECT COUNT(*) FROM credits) AS creditos_despues,
