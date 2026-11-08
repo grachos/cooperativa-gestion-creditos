@@ -204,6 +204,8 @@ export function defineIdempotencySuite(name: string, makeContext: () => Promise<
     });
 
     it("purgeExpired elimina solo las claves vencidas", async () => {
+      // La tabla es compartida: se limpian primero las vencidas que haya dejado otra corrida interrumpida.
+      await ctx.store.purgeExpired();
       await post("/plain", { a: 1 }, { "Idempotency-Key": key("purge-a") });
       expect(await ctx.store.purgeExpired()).toBe(0);
       await ctx.expireAll();
