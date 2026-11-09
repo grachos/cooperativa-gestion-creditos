@@ -521,10 +521,12 @@ identificador tecleado se guarda como hash.
 auditoría), rutas reales con `TURNSTILE_ENFORCE=true` (4), hook y pantallas del frontend (15). Rompiendo a propósito la
 condición «sin token no se envía» fallan 8 pruebas. Suite backend 185, frontend 65.
 
-**Pendiente:** publicar en producción (requiere que las claves estén creadas en Hostinger; salida de emergencia:
-`TURNSTILE_ENFORCE=false`), las llaves de API para integraciones (incremento 4), y probar el contacto real con Cloudflare y
-el widget en un navegador (desde la sesión de desarrollo no hay salida a esos dominios: la primera verificación real
-será en producción con las claves reales).
+**Publicado el 2026-11-09:** commit `ac1d5fa`, compilación y arranque sin errores, migración 030 aplicada, reglas CHECK 10/10, y
+la cooperativa comprobó en el navegador que el ingreso con el reto funciona (primera verificación real contra
+Cloudflare, con las claves de producción). Salida de emergencia documentada en el README (`TURNSTILE_ENFORCE=false`).
+
+**Pendiente:** las llaves de API para integraciones (incremento 4); recuperar y restablecer contraseña con el reto no se
+han probado todavía en producción (solo el ingreso); revisar `auth_audit` tras unos días de uso real.
 
 ## 4. Cómo verificar
 

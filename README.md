@@ -621,7 +621,7 @@ plantilla aún no existe: por ahora es solo el formato.
 
 ## Protección anti-bots (Cloudflare Turnstile)
 
-**Estado: en construcción por incrementos** (3 de 4 hechos; los incrementos 2–3 viven en la rama `claude/brave-sagan-zk3u2o` y salen a producción juntos, cuando las claves estén creadas en Hostinger). Protegerá `POST /auth/login`, `/auth/forgot-password` y
+**Estado: en producción desde el 2026-11-09** (incrementos 1–3; probado el ingreso con el reto por la cooperativa). Falta el incremento 4 (llaves de API). Protegerá `POST /auth/login`, `/auth/forgot-password` y
 `/auth/reset-password` (no hay registro público ni formularios abiertos: los usuarios los crea un administrador).
 
 - **Incremento 1 (hecho): verificador del servidor** `backend/src/security/turnstile.ts`, `verifyTurnstile(token, action,
@@ -661,7 +661,7 @@ plantilla aún no existe: por ahora es solo el formato.
   Los rechazos del reto traen `message`; el cliente de la API lo muestra.
 - Pendiente: llaves de API para integraciones (incremento 4).
 
-### Puesta en marcha en Hostinger (orden)
+### Puesta en marcha en Hostinger (orden; ya hecha en coomulnissi.cc)
 
 1. En Cloudflare → Turnstile → *Add site*, modo **Managed**, dominios `coomulnissi.cc` y `www.coomulnissi.cc`. Copie la
    *site key* y la *secret key*.
