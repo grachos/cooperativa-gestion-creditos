@@ -714,6 +714,14 @@ Claude para auditar o diseñar otros sistemas: `.claude/skills/blindaje-transacc
 repositorio) y `docs/skills/blindaje-transaccional.skill` (para instalarla en la cuenta y usarla en cualquier
 proyecto).
 
+### Segunda skill: seguridad de la parte pública
+
+`.claude/skills/seguridad-web-publica/` (y `docs/skills/seguridad-web-publica.skill` para instalarla en la cuenta):
+anti-bots con Cloudflare Turnstile verificado en el servidor (falla cerrado), límites y bloqueos de intentos guardados en
+la base de datos, mensajes uniformes y auditoría de accesos, cabeceras y CSP, llaves de API para integraciones (diseño, aún
+sin construir aquí), reintentos y fallas, y cómo publicar sin dejar a nadie fuera ni tocar datos reales. Incluye el código
+probado de este proyecto como plantillas (`assets/`). Complementa a `blindaje-transaccional`.
+
 ## Carga masiva de asociados (Excel)
 
 Plantilla: [`docs/plantillas/plantilla_asociados.xlsx`](docs/plantillas/plantilla_asociados.xlsx). Una fila por
