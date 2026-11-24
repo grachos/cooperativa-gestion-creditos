@@ -560,6 +560,11 @@ con fechas de hace 200 días queda `EN_MORA` al desembolsar, crédito con fechas
 anterior. **No probado:** MySQL 8 (la migración usa tabla temporal y `ROW_NUMBER()` para no depender del error 1093 de MySQL),
 ni con huecos físicos en los ids (la numeración usa la posición, no el valor del id).
 
+**Publicación (2026-11-24):** con respaldo de la base hecho y visto bueno de la cooperativa se envió `26f774a` a la rama de
+despliegue, pero **Hostinger no lo desplegó porque su conexión con GitHub estaba perdida**; tras reconectarla se envió un commit
+nuevo para disparar el despliegue. Esta es la segunda vez que ocurre (ver §3.19): cuando un push no despliega, revisar primero
+que GitHub siga conectado en hPanel y que el autodespliegue esté activo.
+
 **Pendiente / cuidado:** publicar solo con respaldo de la base y visto bueno del dueño (cambia la etiqueta de los créditos
 existentes). Si se quiere deshacer: `UPDATE credits SET credit_number = legacy_credit_number WHERE legacy_credit_number IS NOT NULL`
 y borrar la fila `credit_number` de `sequences`. Un proceso viejo que siguiera atendiendo durante el reinicio podría emitir un
