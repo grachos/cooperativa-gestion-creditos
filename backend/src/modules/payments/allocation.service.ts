@@ -240,3 +240,14 @@ export async function refreshCreditAfterReversal(conn: PoolConnection, creditId:
     [round2(Number(r.remaining)), pending, Number(r.in_arrears ?? 0), creditId]
   );
 }
+
+/**
+ * Estado inicial de un crédito recién creado (desembolso o refinanciación): las cuotas que ya vencieron quedan
+ * VENCIDA/EN_MORA con sus días de atraso y el crédito EN_MORA, en la misma transacción. Sin esto el estado esperaba al
+ * job diario (06:00 hora Colombia) y un crédito cargado con fechas antiguas aparecía VIGENTE con mora 180+.
+ */
+export async function refreshNewCredit(conn: PoolConnection, creditId: number, asOf: Date = new Date()): Promise<void> {
+  const [rows] = await conn.query<any[]>(`SELECT id FROM credit_schedule_installments WHERE credit_id = ?`, [creditId]);
+  await refreshInstallments(conn, (rows as any[]).map((r) => r.id as number), asOf);
+  await refreshCreditAfterReversal(conn, creditId);
+}

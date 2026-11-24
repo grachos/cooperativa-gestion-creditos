@@ -77,9 +77,10 @@ export function describeAudit(row: AuditRow): string {
     case "credit_application:CANCEL":
       return `Canceló la solicitud${ov.status ? ` (estaba ${String(ov.status).toLowerCase().replace("_", " ")})` : ""}`;
     case "credit:DISBURSE":
-      return `Desembolsó el crédito${nv.creditNumber ? ` ${nv.creditNumber}` : ""}`;
+      // Sin el número guardado en ese momento: la etiqueta de la entidad muestra el número ACTUAL (se renumeró en 2026-11).
+      return "Desembolsó el crédito";
     case "credit:REFINANCE":
-      return `Refinanció el crédito: nuevo ${nv.creditNumber ?? "crédito"} por ${money(nv.newPrincipal)} a ${nv.termValue ?? "?"} meses (antes quedaban ${money(ov.outstanding)})`;
+      return `Refinanció el crédito: nuevo crédito por ${money(nv.newPrincipal)} a ${nv.termValue ?? "?"} meses (antes quedaban ${money(ov.outstanding)})`;
     case "credit:LEGAL_DOCUMENT_CHECK":
       return `${nv.held ? "Marcó que tiene" : "Marcó que no tiene"} el documento jurídico "${nv.documentType}"`;
     case "payment:CREATE":

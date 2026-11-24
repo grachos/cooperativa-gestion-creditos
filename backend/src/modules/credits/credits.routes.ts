@@ -4,6 +4,7 @@ import { disbursementSchema, refinanceSchema, idParam, paginationQuery } from ".
 import { asyncHandler, HttpError } from "../../middlewares/error.middleware.js";
 import { requireAuth, requirePermission } from "../../middlewares/auth.middleware.js";
 import { buildAmortizationSchedule } from "./schedule.service.js";
+import { refreshNewCredit } from "../payments/allocation.service.js";
 import { assertRefinanceable, computeRefinanceQuote, loadInstallmentRounding, previewSchedule } from "./refinance.service.js";
 import { recordAudit } from "../audit/audit.service.js";
 import { enqueueIntegrationEvent } from "../integration/integration.service.js";
@@ -17,22 +18,21 @@ export const creditsRouter = Router();
 creditsRouter.use(requireAuth);
 
 /**
- * Siguiente número de crédito (CR-AAAA-NNNNN) con un contador atómico en la
- * tabla `sequences`. DEBE llamarse dentro de la transacción del desembolso: la
- * fila del contador queda bloqueada hasta el commit, así que dos desembolsos
- * simultáneos reciben números distintos y consecutivos, y un rollback no
- * consume el número. (Antes: COUNT(*)+1, que se repetía bajo concurrencia.)
+ * Siguiente número de crédito (CR-NNNNN): consecutivo único y SIN año (decisión de la cooperativa, 2026-11-24: son los
+ * primeros créditos y el año de la carga no debe aparecer en el número), con un contador atómico en la tabla
+ * `sequences`. DEBE llamarse dentro de la transacción del desembolso: la fila del contador queda bloqueada hasta el
+ * commit, así que dos desembolsos simultáneos reciben números distintos y consecutivos, y un rollback no consume el
+ * número. (Antes: COUNT(*)+1, que se repetía bajo concurrencia; y luego un contador por año.)
+ * La migración 031 renumeró los créditos existentes y dejó el contador en su cantidad.
  */
 async function nextCreditNumber(conn: PoolConnection): Promise<string> {
-  const year = new Date().getFullYear();
   await conn.query(
-    `INSERT INTO sequences (name, value) VALUES (?, LAST_INSERT_ID(1))
-     ON DUPLICATE KEY UPDATE value = LAST_INSERT_ID(value + 1)`,
-    [`credit_number:${year}`]
+    `INSERT INTO sequences (name, value) VALUES ('credit_number', LAST_INSERT_ID(1))
+     ON DUPLICATE KEY UPDATE value = LAST_INSERT_ID(value + 1)`
   );
   const [rows] = await conn.query<any[]>(`SELECT LAST_INSERT_ID() AS seq`);
   const seq = Number((rows as any[])[0].seq);
-  return `CR-${year}-${String(seq).padStart(5, "0")}`;
+  return `CR-${String(seq).padStart(5, "0")}`;
 }
 
 creditsRouter.post(
@@ -120,6 +120,9 @@ creditsRouter.post(
         );
       }
 
+      // Cuotas ya vencidas (fechas de una carga histórica) quedan VENCIDA/EN_MORA y el crédito EN_MORA de inmediato,
+      // sin esperar al job diario: antes el listado mostraba mora 180+ con el crédito VIGENTE.
+      await refreshNewCredit(conn, creditId);
       await conn.query(`UPDATE credit_applications SET status = 'DESEMBOLSADA' WHERE id = ?`, [id]);
       await conn.query(
         `INSERT INTO credit_application_status_history (credit_application_id, from_status, to_status, reason, user_id)
@@ -181,9 +184,9 @@ creditsRouter.get(
     }
     if (search) {
       conditions.push(
-        `(c.credit_number LIKE ? OR a.id_number LIKE ? OR CONCAT(a.first_name, ' ', a.last_name) LIKE ? OR s.legal_name LIKE ? OR s.tax_id_number LIKE ?)`
+        `(c.credit_number LIKE ? OR c.legacy_credit_number LIKE ? OR a.id_number LIKE ? OR CONCAT(a.first_name, ' ', a.last_name) LIKE ? OR s.legal_name LIKE ? OR s.tax_id_number LIKE ?)`
       );
-      args.push(`%${search}%`, `${search}%`, `%${search}%`, `%${search}%`, `${search}%`);
+      args.push(`%${search}%`, `%${search}%`, `${search}%`, `%${search}%`, `%${search}%`, `${search}%`);
     }
     const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
     const fromJoin = `FROM credits c
@@ -417,6 +420,7 @@ creditsRouter.post(
         );
       }
 
+      await refreshNewCredit(conn, newCreditId);
       await recordAudit(conn, {
         entity: "credit",
         entityId: newCreditId,

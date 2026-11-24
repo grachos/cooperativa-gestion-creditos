@@ -65,8 +65,8 @@ async function buildWhere(query: unknown) {
   }
   if (f.credit) {
     const [rows] = await pool.query<any[]>(
-      `SELECT id, credit_application_id FROM credits WHERE credit_number = ? OR id = ? LIMIT 1`,
-      [f.credit, /^\d+$/.test(f.credit) ? Number(f.credit) : 0]
+      `SELECT id, credit_application_id FROM credits WHERE credit_number = ? OR legacy_credit_number = ? OR id = ? LIMIT 1`,
+      [f.credit, f.credit, /^\d+$/.test(f.credit) ? Number(f.credit) : 0]
     );
     const credit = (rows as any[])[0];
     if (!credit) {
