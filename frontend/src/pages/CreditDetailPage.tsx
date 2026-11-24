@@ -70,6 +70,8 @@ interface CreditDetail {
   disbursement_from_account: string | null;
   disbursement_proof_filed: boolean;
   credit_number: string;
+  /** Número que tenía antes de la renumeración consecutiva de 2026-11 (null si nunca cambió). */
+  legacy_credit_number: string | null;
   disbursed_amount: string;
   principal_balance: string;
   interest_rate: string;
@@ -108,6 +110,7 @@ export default function CreditDetailPage() {
   return (
     <div>
       <h1 className="mb-1 text-xl font-semibold text-slate-800">Crédito {data.credit_number}</h1>
+      {data.legacy_credit_number && <p className="mb-1 text-xs text-slate-400">Número anterior: {data.legacy_credit_number}</p>}
       <p className="mb-1 text-sm text-slate-400">
         Estado: {data.status} · Desembolsado: {formatDate(data.disbursement_date)}
         {data.moraCode && (
@@ -137,7 +140,7 @@ export default function CreditDetailPage() {
       {refinance && (
         <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
           <h2 className="mb-2 text-sm font-semibold text-slate-700">
-            Refinanciación: heredado del crédito {refinance.fromCreditNumber ?? data.refinanced_from_credit_number}
+            Refinanciación: heredado del crédito {data.refinanced_from_credit_number ?? refinance.fromCreditNumber}
           </h2>
           <RefinanceBreakdown q={refinance} />
         </div>

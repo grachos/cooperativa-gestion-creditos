@@ -92,7 +92,8 @@ describe.skipIf(process.env.TEST_DB !== "1")("Visor de actividad: quién autoriz
     expect(approve.user_name).toBe("Prueba fase 7");
 
     const disburse = bySummary(/^Desembolsó el crédito/);
-    expect(disburse.summary).toContain(c.creditNumber);
+    // La frase no repite el número guardado en ese momento (los créditos se renumeraron en 2026-11): el actual va en la etiqueta.
+    expect(disburse.summary).toBe("Desembolsó el crédito");
     expect(disburse.entity_label).toBe(`Crédito ${c.creditNumber}`);
     expect(disburse.link).toBe(`/creditos/${c.creditId}`);
   });

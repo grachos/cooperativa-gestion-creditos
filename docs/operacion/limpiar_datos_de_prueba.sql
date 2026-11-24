@@ -2,7 +2,7 @@
 -- usuarios de prueba) y deja la aplicación lista para cargar los datos reales.
 --
 -- CONSERVA: la estructura, los roles y permisos, los parámetros (con su historial de edición) y los usuarios
--- cuyo correo pongas en @conservar. Reinicia la numeración de créditos (el próximo será CR-AAAA-00001).
+-- cuyo correo pongas en @conservar. Reinicia la numeración de créditos (el próximo será CR-00001).
 -- NO se puede deshacer: ANTES exporta la base completa en phpMyAdmin (Exportar → Rápido → SQL).
 --
 -- *** PELIGRO: borra TODOS los asociados, créditos y pagos que haya en la base, sean de prueba o reales. ***

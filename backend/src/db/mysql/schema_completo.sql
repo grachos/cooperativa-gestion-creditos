@@ -1466,6 +1466,108 @@ INSERT IGNORE INTO parameters (`key`, value, description) VALUES
    'Refinanciación: el nuevo crédito hereda lo que falta de las cuotas pendientes (capital + interés) y, si chargeOriginalInterestOnPending es verdadero, se suma el interés mensual del préstamo inicial por cada cuota pendiente. No lleva interés propio. El dinero nuevo se presta como un crédito aparte.');
 
 -- ============================================================
+-- 030_antibots.sql
+-- ============================================================
+
+-- Anti-bots (docs/escalabilidad.md §3.19): límites de intentos en la base de datos y auditoría de accesos.
+--
+--  auth_attempts: una fila por intento a login / forgot-password / reset-password. Sirve para limitar por IP y por
+--     identificador (usuario o correo escrito, guardado como SHA-256: no se guarda lo que la persona tecleó, que a
+--     veces es una contraseña puesta en el campo equivocado). Vive en la base y no en memoria: el hosting corre varios
+--     procesos y cada uno contaba aparte. Las filas se insertan ANTES de verificar la contraseña y se marcan
+--     `success = 1` si salió bien, así una ráfaga de intentos simultáneos no se cuela por encima del límite. Se purgan
+--     a los 2 días.
+--  auth_audit: una fila por petición (fecha, IP, agente de usuario, acción, resultado de Turnstile y del acceso, usuario
+--     si se conoce). Nunca contraseñas ni tokens. Sin llave foránea a users: el rastro sobrevive a la baja del usuario.
+--     Se purga al año.
+--
+-- Repetible: solo CREATE TABLE IF NOT EXISTS (ver 021_multiprocess_guards.sql).
+CREATE TABLE IF NOT EXISTS auth_attempts (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  action VARCHAR(30) NOT NULL,
+  ip_address VARCHAR(64) NOT NULL,
+  identifier_hash CHAR(64) NULL,
+  success TINYINT(1) NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_auth_attempts_ip (action, ip_address, created_at),
+  KEY idx_auth_attempts_identifier (action, identifier_hash, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS auth_audit (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  action VARCHAR(30) NOT NULL,
+  ip_address VARCHAR(64) NULL,
+  user_agent VARCHAR(255) NULL,
+  identifier_hash CHAR(64) NULL,
+  user_id INT NULL,
+  turnstile_result VARCHAR(20) NOT NULL,
+  turnstile_reason VARCHAR(60) NULL,
+  outcome VARCHAR(30) NOT NULL,
+  http_status SMALLINT NULL,
+  KEY idx_auth_audit_created (created_at),
+  KEY idx_auth_audit_ip (ip_address, created_at),
+  KEY idx_auth_audit_user (user_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================
+-- 031_numeracion_creditos_consecutiva.sql
+-- ============================================================
+
+-- Numeración de créditos consecutiva y SIN año (pedido de la cooperativa, 2026-11-24): "CR-2026-00001" pasa a
+-- "CR-00001". Son los primeros créditos y el año en que se cargaron no debe aparecer en el número.
+--
+-- Qué hace (solo cambia la ETIQUETA del crédito; ninguna relación usa el número: pagos, cuotas, ajustes, alertas,
+-- participantes y demás apuntan al id del crédito):
+--  1. Agrega credits.legacy_credit_number y guarda ahí el número anterior de cada crédito que cambie: es lo que permite
+--     seguir buscándolo por su número viejo (listado y actividad) y deshacer el cambio si hiciera falta.
+--  2. Renumera TODOS los créditos existentes 1..N en el orden en que se crearon (por id), con 5 dígitos.
+--  3. Deja el contador `sequences('credit_number')` en N: el próximo crédito será CR-(N+1). Las filas del contador por
+--     año (`credit_number:AAAA`) quedan sin usar; no se borran.
+--
+-- NO toca: auditoría (conserva lo que se escribió en su momento), eventos de integración ni ningún dato de dinero.
+--
+-- Repetible: la columna es condicional; el número anterior solo se guarda si aún no hay uno y el actual no tiene ya
+-- el formato nuevo; el UPDATE solo cambia lo que no coincide con su posición (una segunda ejecución no cambia nada,
+-- también si ya se crearon créditos nuevos con el contador). Es una sola sentencia: se aplica completa o no se aplica.
+-- La tabla temporal evita el error 1093 de MySQL (actualizar una tabla leyéndola en la misma sentencia).
+SET @ddl = IF(
+  (SELECT COUNT(*) FROM information_schema.COLUMNS
+   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'credits' AND COLUMN_NAME = 'legacy_credit_number') = 0,
+  'ALTER TABLE credits ADD COLUMN legacy_credit_number VARCHAR(30) NULL',
+  'SELECT 1');
+PREPARE ddl_stmt FROM @ddl;
+EXECUTE ddl_stmt;
+DEALLOCATE PREPARE ddl_stmt;
+
+SET @ddl = IF(
+  (SELECT COUNT(*) FROM information_schema.STATISTICS
+   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'credits' AND INDEX_NAME = 'idx_credits_legacy_number') = 0,
+  'ALTER TABLE credits ADD KEY idx_credits_legacy_number (legacy_credit_number)',
+  'SELECT 1');
+PREPARE ddl_stmt FROM @ddl;
+EXECUTE ddl_stmt;
+DEALLOCATE PREPARE ddl_stmt;
+
+-- 1. El número anterior, una sola vez (solo si todavía no tiene el formato nuevo).
+UPDATE credits SET legacy_credit_number = credit_number
+WHERE legacy_credit_number IS NULL AND credit_number NOT REGEXP '^CR-[0-9]{5,}$';
+
+-- 2. Renumerar 1..N por orden de creación.
+DROP TEMPORARY TABLE IF EXISTS tmp_credit_rank;
+CREATE TEMPORARY TABLE tmp_credit_rank AS
+  SELECT id, ROW_NUMBER() OVER (ORDER BY id) AS rn FROM credits;
+UPDATE credits c
+JOIN tmp_credit_rank x ON x.id = c.id
+SET c.credit_number = CONCAT('CR-', LPAD(x.rn, 5, '0'))
+WHERE c.credit_number <> CONCAT('CR-', LPAD(x.rn, 5, '0'));
+DROP TEMPORARY TABLE tmp_credit_rank;
+
+-- 3. El contador continúa desde la cantidad de créditos (nunca retrocede).
+INSERT IGNORE INTO sequences (name, value) VALUES ('credit_number', 0);
+UPDATE sequences SET value = GREATEST(value, (SELECT COUNT(*) FROM credits)) WHERE name = 'credit_number';
+
+-- ============================================================
 -- Registro de migraciones aplicadas (mismas columnas que usa el runner de
 -- Postgres, para poder usar un runner con MySQL más adelante sin repetirlas)
 -- ============================================================
@@ -1503,4 +1605,6 @@ INSERT IGNORE INTO schema_migrations (name) VALUES
   ('026_reunion_fase5.sql'),
   ('027_reparar_saldos_tras_reversos.sql'),
   ('028_reglas_check_montos.sql'),
-  ('029_refinanciacion_y_redondeo.sql');
+  ('029_refinanciacion_y_redondeo.sql'),
+  ('030_antibots.sql'),
+  ('031_numeracion_creditos_consecutiva.sql');

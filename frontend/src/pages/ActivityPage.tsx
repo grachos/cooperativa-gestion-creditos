@@ -204,7 +204,7 @@ export default function ActivityPage() {
         </label>
         <label className="flex flex-col text-xs text-slate-500">
           Crédito (número)
-          <input className={`${field} w-40`} placeholder="CR-2026-00001" value={credit} onChange={(e) => setCredit(e.target.value)} />
+          <input className={`${field} w-40`} placeholder="CR-00001" value={credit} onChange={(e) => setCredit(e.target.value)} />
         </label>
         <label className="flex flex-col text-xs text-slate-500">
           Desde

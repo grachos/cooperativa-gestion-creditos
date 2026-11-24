@@ -45,6 +45,7 @@ para cientos o miles de usuarios concurrentes. Riesgos principales detectados:
 | 23 | P2 | R | Clave de idempotencia guardada después del commit (commit ambiguo) | ✅ §3.16 (H8) |
 | 24 | P2 | R | Sin reglas en la base: pagado > debido o saldos negativos solo los impedía el código | ✅ §3.17 (migración 028) |
 | 25 | P2 | C | Refinanciación: el interés pendiente pasaba a capital y se le cobraba otra vez la tasa por todo el plazo nuevo (H9) | ✅ §3.18 (regla de la cooperativa) |
+| 27 | P2 | C | Un crédito cargado con fechas antiguas aparecía VIGENTE con «mora 180+»: el estado y los días de atraso de las cuotas solo los actualiza el job diario (06:00 Colombia); además el número llevaba el año de la carga (CR-2026-…) | 🔶 §3.20 (código y migración 031 listos y probados; falta publicar con respaldo) |
 
 El detalle de índices recomendados, de caché, de tareas asíncronas y el plan de
 pruebas de carga está en las secciones 6 a 8.
@@ -528,6 +529,42 @@ Cloudflare, con las claves de producción). Salida de emergencia documentada en 
 **Pendiente:** las llaves de API para integraciones (incremento 4); recuperar y restablecer contraseña con el reto no se
 han probado todavía en producción (solo el ingreso); revisar `auth_audit` tras unos días de uso real.
 
+### 3.20 Numeración consecutiva sin año y estado coherente al crear un crédito (2026-11-24)
+
+**Datos que lo motivaron (producción, consulta de solo lectura de la cooperativa):** un único crédito, `CR-2026-00001`,
+VIGENTE, $4.100.000 a 18 cuotas, desembolso 2025-07-14, primera cuota 2025-08-20, creado el 2026-11-24, con **0 cuotas
+marcadas vencidas, `max_dias_atraso` 0 y 0 pagos**. Es decir: el listado mostraba «CM180 · Mora 180+» porque calcula la mora al
+momento con las fechas de las cuotas sin pagar (16 de las 18 ya habían vencido), pero el estado del crédito y de sus cuotas
+(`VENCIDA`/`EN_MORA`, `overdue_days`) solo los escribe el job diario de las 06:00 hora Colombia, que aún no había corrido
+desde la carga. Dos pantallas decían cosas distintas del mismo crédito. Y el número llevaba 2026 aunque el crédito es de 2025.
+
+**Arreglo 1, numeración:** `CR-NNNNN`, consecutivo único y sin año (`sequences('credit_number')`, mismo patrón atómico con
+`LAST_INSERT_ID`). Migración `031_numeracion_creditos_consecutiva.sql`: agrega `credits.legacy_credit_number`, guarda ahí el
+número anterior, renumera **todos** los créditos existentes 1..N por orden de creación (id) y deja el contador en N. Solo cambia la
+etiqueta: ninguna relación usa el número (todo apunta al id). No toca auditoría, eventos de integración ni dinero. En producción
+afecta a una sola fila (id 2 → `CR-00001`; el contador pasa a 1 y el próximo será `CR-00002`). El número anterior se puede
+buscar en el listado y en la actividad, y se muestra en el detalle («Número anterior»); la actividad ya no repite números
+históricos en sus frases (la etiqueta de la entidad muestra el actual).
+
+**Arreglo 2, estado al crear:** `refreshNewCredit` (en `allocation.service.ts`) se ejecuta dentro de la transacción del
+desembolso y de la refinanciación: las cuotas ya vencidas quedan `VENCIDA`/`EN_MORA` con sus días de atraso y el crédito queda
+`EN_MORA` al instante, sin esperar al job. Los créditos ya creados los corrige el job diario en su siguiente corrida.
+
+**Verificación (base local MariaDB 10.11, la misma familia que producción):** se generaron 18 créditos con las pruebas del
+proyecto (2 refinanciados, con pagos), se dejaron en el formato viejo (con años distintos, uno con formato `CR-DEMO-…` y
+contadores por año) y se tomó una huella MD5 de créditos (sin la etiqueta), cuotas, pagos y conteos de ajustes, auditoría y
+alertas. (A) Aplicar: 1..18 por orden de creación, número anterior guardado, contador en 18, **huella idéntica**. (B) Repetir: no
+cambia nada. (C) Interrumpida a medias (columna y número anterior ya escritos): se completa, huella idéntica.
+`numeracion.creditos.test.ts` (5): formato y consecutivo, créditos simultáneos sin repetir, búsqueda por número anterior, crédito
+con fechas de hace 200 días queda `EN_MORA` al desembolsar, crédito con fechas futuras sigue `VIGENTE`; 3 de las 5 fallan con el código
+anterior. **No probado:** MySQL 8 (la migración usa tabla temporal y `ROW_NUMBER()` para no depender del error 1093 de MySQL),
+ni con huecos físicos en los ids (la numeración usa la posición, no el valor del id).
+
+**Pendiente / cuidado:** publicar solo con respaldo de la base y visto bueno del dueño (cambia la etiqueta de los créditos
+existentes). Si se quiere deshacer: `UPDATE credits SET credit_number = legacy_credit_number WHERE legacy_credit_number IS NOT NULL`
+y borrar la fila `credit_number` de `sequences`. Un proceso viejo que siguiera atendiendo durante el reinicio podría emitir un
+número con el formato anterior (ventana de segundos).
+
 ## 4. Cómo verificar
 
 Pruebas automáticas (carpeta `backend/src`). Las que necesitan base de datos son
@@ -646,6 +683,7 @@ Lo que ya está en el código (§3.13) permite diagnosticar; falta lo que avisa 
 
 | Fecha | Cambio |
 |---|---|
+| 2026-11-24 | Numeración de créditos consecutiva sin año (`CR-NNNNN`, migración 031 con número anterior guardado) y estado coherente al desembolsar o refinanciar (§3.20; en la rama de pruebas hasta tener respaldo y visto bueno). |
 | 2026-11-08 | Anti-bots, incremento 3: widget de Turnstile en ingreso, recuperar y restablecer contraseña, y `GET /auth/captcha-config` (§3.19; sin publicar hasta crear las claves). |
 | 2026-11-08 | Anti-bots en login/recuperar/restablecer: verificador de Turnstile, límites por IP e identificador en la base de datos, auditoría y migración 030 (§3.19; sin publicar hasta el widget). |
 | 2026-10-19 | H9: refinanciación con la regla de la cooperativa (pendiente + interés del préstamo inicial × cuotas pendientes, sin interés propio, capital/interés heredados separados) y cuota redondeada hacia arriba a $100 (migración 029, §3.18). |

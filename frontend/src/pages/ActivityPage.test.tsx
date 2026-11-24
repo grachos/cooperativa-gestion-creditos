@@ -18,7 +18,7 @@ beforeEach(() => {
       total: 1,
       data: [{
         id: 1, created_at: "2026-10-16 15:00:00", user_name: "Jorge", entity: "credit_adjustment", entity_id: "9", action: "CREATE",
-        reason: "Pidió rebaja", summary: "Dio un descuento de $ 25.000", entity_label: "Ajuste #9 del crédito CR-2026-00001", link: "/creditos/5",
+        reason: "Pidió rebaja", summary: "Dio un descuento de $ 25.000", entity_label: "Ajuste #9 del crédito CR-00001", link: "/creditos/5",
         old_value: null, new_value: { type: "DESCUENTO", amount: 25000 }
       }]
     }));
@@ -40,7 +40,7 @@ describe("ActivityPage", () => {
     await screen.findByText("Dio un descuento de $ 25.000");
     expect(screen.getByText("Jorge", { selector: "td" })).toBeTruthy();
     expect(screen.getByText(/Motivo: Pidió rebaja/)).toBeTruthy();
-    const link = screen.getByRole("link", { name: /CR-2026-00001/ });
+    const link = screen.getByRole("link", { name: /CR-00001/ });
     expect(link.getAttribute("href")).toBe("/creditos/5");
   });
 
@@ -53,7 +53,7 @@ describe("ActivityPage", () => {
   });
 
   it("abre filtrado por crédito cuando llega desde el historial del crédito", async () => {
-    setup("/actividad?credit=CR-2026-00001");
-    await waitFor(() => expect(urls.some((x) => x.includes("/audit?") && x.includes("credit=CR-2026-00001"))).toBe(true));
+    setup("/actividad?credit=CR-00001");
+    await waitFor(() => expect(urls.some((x) => x.includes("/audit?") && x.includes("credit=CR-00001"))).toBe(true));
   });
 });

@@ -690,6 +690,14 @@ historial de estados conserva la hora real de cada acción. El cambio queda en A
 anterior, fecha nueva y motivo ("Cambió la fecha de la solicitud de … a …"). No cambia la fecha de desembolso de un
 crédito ya creado.
 
+## Numeración de créditos
+
+Los créditos se numeran `CR-00001`, `CR-00002`… (consecutivo único, **sin año**), en el orden en que se desembolsan. La
+migración 031 renumeró los que ya existían y guardó el número anterior (`legacy_credit_number`): se sigue encontrando por él en
+el listado y en Actividad, y el detalle muestra «Número anterior». Además, al desembolsar o refinanciar, las cuotas que ya
+vencieron quedan en mora y el crédito `EN_MORA` de inmediato (antes esperaba al proceso diario de las 6 a. m., y un crédito
+cargado con fechas antiguas aparecía `VIGENTE` con mora 180+). Detalle en `docs/escalabilidad.md` §3.20.
+
 ## Selector de titular y codeudores con búsqueda
 
 En «Nueva solicitud», el titular y los codeudores se eligen con un campo donde se escribe para buscar
